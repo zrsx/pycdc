@@ -10,7 +10,6 @@ on:
   push:
     branches: [master]
   pull_request:
-    # The branches below must be a subset of the branches above
     branches: [master]
   schedule:
     - cron: '0 1 * * 2'
@@ -28,24 +27,20 @@ jobs:
       fail-fast: false
       matrix:
         language: ['cpp', 'python']
-        # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby' ]
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
 
-    # Autobuild for Python
     - if: matrix.language == 'python'
       name: Autobuild Python
       uses: github/codeql-action/autobuild@v3
 
-    # Manual build for C++
     - if: matrix.language == 'cpp'
       name: Build C++
       run: |
@@ -53,17 +48,15 @@ jobs:
         cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
         make
 
-    # Perform CodeQL analysis without uploading
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{ matrix.language }}"
         upload: false
 
-    # Optional: Archive SARIF files for local download
     - name: Archive SARIF results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: codeql-results-${{ matrix.language }}
         path: '**/*.sarif'
