@@ -3,25 +3,27 @@ on:
   push:
     branches: [master]
   pull_request:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
-      - name: Configure and Build
-        run: |
-          (
-            mkdir build-debug && cd build-debug
-            cmake -DCMAKE_BUILD_TYPE=Debug ..
-            make -j4
-          )
-          (
-            mkdir build-release && cd build-release
-            cmake -DCMAKE_BUILD_TYPE=Debug ..
-            make -j4
-          )
 
-      - name: Test
+      - name: Configure and Build Debug
         run: |
-          cmake --build build-debug --target check
-          cmake --build build-release --target check
+          mkdir build-debug && cd build-debug
+          cmake -DCMAKE_BUILD_TYPE=Debug ..
+          make -j4
+
+      - name: Configure and Build Release
+        run: |
+          mkdir build-release && cd build-release
+          cmake -DCMAKE_BUILD_TYPE=Release ..
+          make -j4
+
+      - name: Test Debug
+        run: cmake --build build-debug --target check
+
+      - name: Test Release
+        run: cmake --build build-release --target check
