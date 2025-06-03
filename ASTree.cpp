@@ -1032,16 +1032,88 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 stack.push(new ASTCompare(left, right, operand ? ASTCompare::CMP_IS_NOT : ASTCompare::CMP_IS));
             }
             break;
-        case Pyc::JUMP_IF_FALSE_A:
-        case Pyc::JUMP_IF_TRUE_A:
-        case Pyc::JUMP_IF_FALSE_OR_POP_A:
-        case Pyc::JUMP_IF_TRUE_OR_POP_A:
-        case Pyc::POP_JUMP_IF_FALSE_A:
-        case Pyc::POP_JUMP_IF_TRUE_A:
-        case Pyc::POP_JUMP_FORWARD_IF_FALSE_A:
-        case Pyc::POP_JUMP_FORWARD_IF_TRUE_A:
+        case Pyc::BEFORE_ASYNC_WITH:
+        case Pyc::BEFORE_WITH:
+        case Pyc::BINARY_SLICE:
+        case Pyc::CALL_FUNCTION_EX_A:
+        case Pyc::CALL_INTRINSIC_1_A:
+        case Pyc::CALL_INTRINSIC_2_A:
+        case Pyc::CALL_KW_A:
+        case Pyc::CHECK_EG_MATCH:
+        case Pyc::CHECK_EXC_MATCH:
+        case Pyc::CLEANUP_THROW:
+        case Pyc::CONVERT_VALUE_A:
+        case Pyc::COPY_A:
+        case Pyc::COPY_FREE_VARS_A:
+        case Pyc::DELETE_DEREF_A:
+        case Pyc::DICT_MERGE_A:
+        case Pyc::DICT_UPDATE_A:
+        case Pyc::END_ASYNC_FOR:
+        case Pyc::END_FOR:
+        case Pyc::END_SEND:
+        case Pyc::ENTER_EXECUTOR_A:
+        case Pyc::EXIT_INIT_CHECK:
+        case Pyc::EXTENDED_ARG_A:
+        case Pyc::FORMAT_SIMPLE:
+        case Pyc::GET_AWAITABLE_A:
+        case Pyc::GET_LEN:
+        case Pyc::INSTRUMENTED_CALL_FUNCTION_EX_A:
+        case Pyc::INSTRUMENTED_CALL_KW_A:
+        case Pyc::INSTRUMENTED_END_FOR_A:
+        case Pyc::INSTRUMENTED_END_SEND_A:
+        case Pyc::INSTRUMENTED_INSTRUCTION_A:
+        case Pyc::INSTRUMENTED_JUMP_BACKWARD_A:
+        case Pyc::INSTRUMENTED_LINE_A:
+        case Pyc::INSTRUMENTED_LOAD_SUPER_ATTR_A:
         case Pyc::INSTRUMENTED_POP_JUMP_IF_FALSE_A:
+        case Pyc::INSTRUMENTED_POP_JUMP_IF_NONE_A:
+        case Pyc::INSTRUMENTED_POP_JUMP_IF_NOT_NONE_A:
         case Pyc::INSTRUMENTED_POP_JUMP_IF_TRUE_A:
+        case Pyc::INTERPRETER_EXIT:
+        case Pyc::JUMP_BACKWARD_A:
+        case Pyc::JUMP_BACKWARD_NO_INTERRUPT_A:
+        case Pyc::JUMP_IF_FALSE_A:
+        case Pyc::JUMP_IF_FALSE_OR_POP_A:
+        case Pyc::JUMP_IF_NOT_EXC_MATCH_A:
+        case Pyc::JUMP_IF_TRUE_A:
+        case Pyc::JUMP_IF_TRUE_OR_POP_A:
+        case Pyc::LIST_TO_TUPLE:
+        case Pyc::LOAD_ASSERTION_ERROR:
+        case Pyc::LOAD_FAST_AND_CLEAR_A:
+        case Pyc::LOAD_FAST_CHECK_A:
+        case Pyc::LOAD_FROM_DICT_OR_DEREF_A:
+        case Pyc::LOAD_FROM_DICT_OR_GLOBALS_A:
+        case Pyc::LOAD_SUPER_ATTR_A:
+        case Pyc::MAKE_CELL_A:
+        case Pyc::MAKE_FUNCTION:
+        case Pyc::MAP_ADD_A:
+        case Pyc::MATCH_CLASS_A:
+        case Pyc::MATCH_KEYS:
+        case Pyc::MATCH_MAPPING:
+        case Pyc::MATCH_SEQUENCE:
+        case Pyc::POP_JUMP_BACKWARD_IF_TRUE_A:
+        case Pyc::POP_JUMP_FORWARD_IF_FALSE_A:
+        case Pyc::POP_JUMP_FORWARD_IF_NONE_A:
+        case Pyc::POP_JUMP_FORWARD_IF_NOT_NONE_A:
+        case Pyc::POP_JUMP_FORWARD_IF_TRUE_A:
+        case Pyc::POP_JUMP_IF_FALSE_A:
+        case Pyc::POP_JUMP_IF_NONE_A:
+        case Pyc::POP_JUMP_IF_NOT_NONE_A:
+        case Pyc::POP_JUMP_IF_TRUE_A:
+        case Pyc::PREP_RERAISE_STAR:
+        case Pyc::PUSH_EXC_INFO:
+        case Pyc::RERAISE:
+        case Pyc::RERAISE_A:
+        case Pyc::RETURN_GENERATOR:
+        case Pyc::SEND_A:
+        case Pyc::SET_ADD:
+        case Pyc::SET_ADD_A:
+        case Pyc::SET_FUNCTION_ATTRIBUTE_A:
+        case Pyc::STORE_FAST_LOAD_FAST_A:
+        case Pyc::STORE_FAST_STORE_FAST_A:
+        case Pyc::TO_BOOL:
+        case Pyc::UNPACK_EX_A:
+        case Pyc::YIELD_VALUE_A:
             {
                 PycRef<ASTNode> cond = stack.top();
                 PycRef<ASTCondBlock> ifblk;
