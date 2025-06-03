@@ -3,7 +3,6 @@ on:
   push:
     branches: [master]
   pull_request:
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,7 +15,6 @@ jobs:
             cmake -DCMAKE_BUILD_TYPE=Debug ..
             make -j4
           )
-
           (
             mkdir build-release && cd build-release
             cmake -DCMAKE_BUILD_TYPE=Debug ..
