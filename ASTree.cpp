@@ -1374,6 +1374,12 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                     stack_hist.pop();
                 }
 
+                if (blocks.size() == 1 && !source.atEof()) {
+                    fprintf(stderr, "Warning: Refusing to pop last block when there is more code to parse pos: %d OP: %02x\n", pos, opcode & 0xff);
+                    cleanBuild = false;
+                    break;
+                }
+
                 PycRef<ASTBlock> prev = curblock;
                 PycRef<ASTBlock> nil;
                 bool push = true;
