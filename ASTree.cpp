@@ -1674,6 +1674,14 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                     curblock->removeLast();
                 }
 
+                if (blocks.size() == 1 && !source.atEof()) {
+                    fprintf(stderr, "Warning: Refusing to pop last block when there is more code to parse pos: %d OP: %02x\n", pos, opcode & 0xff);
+                    cleanBuild = false;
+                    break;
+                }
+                    
+                    
+
                 if (curblock->blktype() == ASTBlock::BLK_IF
                         || curblock->blktype() == ASTBlock::BLK_ELIF
                         || curblock->blktype() == ASTBlock::BLK_ELSE
