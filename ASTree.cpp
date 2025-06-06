@@ -1349,127 +1349,141 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
         case Pyc::JUMP_FORWARD_A:
         case Pyc::INSTRUMENTED_JUMP_FORWARD_A:
-            {
+        {
                 int offs = operand;
                 if (mod->verCompare(3, 10) >= 0)
-                    offs *= sizeof(uint16_t); // // BPO-27129
+                        offs *= sizeof(uint16_t);        // Adjust offset for Python 3.10+
 
-                if (curblock->blktype() == ASTBlock::BLK_CONTAINER) {
-                    PycRef<ASTContainerBlock> cont = curblock.cast<ASTContainerBlock>();
-                    if (cont->hasExcept()) {
-                        stack_hist.push(stack);
+                static std::unordered_map<std::pair<int, int>, bool> emitted_blocks;
 
-                        curblock->setEnd(pos+offs);
-                        PycRef<ASTBlock> except = new ASTCondBlock(ASTBlock::BLK_EXCEPT, pos+offs, NULL, false);
-                        except->init();
-                        blocks.push(except);
-                        curblock = blocks.top();
-                    }
-                    break;
+                auto should_emit = [&](int blk_type, int pos, bool critical) {
+                        auto key = std::make_pair(blk_type, pos);
+                        if (critical || emitted_blocks.find(key) == emitted_blocks.end()) {
+                                emitted_blocks[key] = true;        // Mark as emitted
+                                return true;
+                        }
+                        return false;
+                };
+
+                if (curblock && curblock->blktype() == ASTBlock::BLK_CONTAINER) {
+                        PycRef<ASTContainerBlock> cont = curblock.cast<ASTContainerBlock>();
+                        if (cont->hasExcept()) {
+                                stack_hist.push(stack);
+                                curblock->setEnd(pos + offs);
+
+                                if (should_emit(ASTBlock::BLK_EXCEPT, pos + offs, true)) {
+                                        PycRef<ASTBlock> except = new ASTCondBlock(ASTBlock::BLK_EXCEPT, pos + offs, NULL, false);
+                                        except->init();
+                                        blocks.push(except);
+                                }
+
+                                if (!blocks.empty())
+                                        curblock = blocks.top();
+
+                                break;
+                        }
                 }
 
-                if (!stack_hist.empty()) {
-                    if (stack.empty()) // if it's part of if-expression, TOS at the moment is the result of "if" part
+                if (!stack_hist.empty() && stack.empty()) {
                         stack = stack_hist.top();
-                    stack_hist.pop();
+                        stack_hist.pop();
                 }
 
                 if (blocks.size() == 1 && !source.atEof()) {
-                    fprintf(stderr, "Warning: Refusing to pop last block when there is more code to parse pos: %d OP: %02x\n", pos, opcode & 0xff);
-                    cleanBuild = false;
-                    break;
+                        fprintf(stderr, "Warning: Skipping last block removal, code still remains at pos: %d OP: %02x\n", pos, opcode & 0xff);
+                        cleanBuild = false;
+                        break;
                 }
 
                 PycRef<ASTBlock> prev = curblock;
                 PycRef<ASTBlock> nil;
-                bool push = true;
+                bool push_stack = true;
 
-                do {
-                    blocks.pop();
+                while (prev != nil) {
+                        if (!blocks.empty()) blocks.pop();
 
-                    if (!blocks.empty())
-                        blocks.top()->append(prev.cast<ASTNode>());
+                        if (!blocks.empty())
+                                blocks.top()->append(prev.cast<ASTNode>());
 
-                    if (prev->blktype() == ASTBlock::BLK_IF
-                            || prev->blktype() == ASTBlock::BLK_ELIF) {
-                        if (offs == 0) {
-                            prev = nil;
-                            continue;
+                        int target = pos + offs;
+                        int type = prev->blktype();
+
+                        switch (type) {
+                                case ASTBlock::BLK_IF:
+                                case ASTBlock::BLK_ELIF:
+                                        should_emit(ASTBlock::BLK_ELSE, target, false)) {
+                                                if (push_stack) stack_hist.push(stack);
+                                                PycRef<ASTBlock> next = new ASTBlock(ASTBlock::BLK_ELSE, target);
+                                                if (prev->inited() == ASTCondBlock::PRE_POPPED)
+                                                        next->init(ASTCondBlock::PRE_POPPED);
+                                                blocks.push(next.cast<ASTBlock>());
+                                        }
+                                        prev = nil;
+                                        break;
+
+                                case ASTBlock::BLK_EXCEPT:
+                                        if (offs > 0 && should_emit(ASTBlock::BLK_EXCEPT, target, false)) {
+                                                if (push_stack) stack_hist.push(stack);
+                                                PycRef<ASTBlock> next = new ASTCondBlock(ASTBlock::BLK_EXCEPT, target, NULL, false);
+                                                next->init();
+                                                blocks.push(next.cast<ASTBlock>());
+                                        }
+                                        prev = nil;
+                                        break;
+
+                                case ASTBlock::BLK_ELSE:
+                                        if (!blocks.empty())
+                                                prev = blocks.top();
+                                        else
+                                                prev = nil;
+
+                                        if (!push_stack && !stack_hist.empty()) {
+                                                stack = stack_hist.top();
+                                                stack_hist.pop();
+                                        }
+                                        push_stack = false;
+
+                                        if (prev && prev->blktype() == ASTBlock::BLK_MAIN)
+                                                prev = nil;
+                                        break;
+
+                                case ASTBlock::BLK_TRY:
+                                        if (prev->end() < target && !stack_hist.empty()) {
+                                                stack = stack_hist.top();
+                                                stack_hist.pop();
+                                                stack.pop();
+
+                                                if (!blocks.empty() && blocks.top()->blktype() == ASTBlock::BLK_CONTAINER) {
+                                                        PycRef<ASTContainerBlock> cont = blocks.top().cast<ASTContainerBlock>();
+                                                        if (cont->hasExcept() && should_emit(ASTBlock::BLK_EXCEPT, target, true)) {
+                                                                if (push_stack) stack_hist.push(stack);
+                                                                PycRef<ASTBlock> except = new ASTCondBlock(ASTBlock::BLK_EXCEPT, target, NULL, false);
+                                                                except->init();
+                                                                blocks.push(except);
+                                                        }
+                                                } else {
+                                                        fprintf(stderr, "Critical Issue Detected! Unexpected AST structure encountered.\n");
+                                                }
+                                        }
+                                        prev = nil;
+                                        break;
+
+                                default:
+                                        prev = nil;
+                                        break;
                         }
-
-                        if (push) {
-                            stack_hist.push(stack);
-                        }
-                        PycRef<ASTBlock> next = new ASTBlock(ASTBlock::BLK_ELSE, pos+offs);
-                        if (prev->inited() == ASTCondBlock::PRE_POPPED) {
-                            next->init(ASTCondBlock::PRE_POPPED);
-                        }
-
-                        blocks.push(next.cast<ASTBlock>());
-                        prev = nil;
-                    } else if (prev->blktype() == ASTBlock::BLK_EXCEPT) {
-                        if (offs == 0) {
-                            prev = nil;
-                            continue;
-                        }
-
-                        if (push) {
-                            stack_hist.push(stack);
-                        }
-                        PycRef<ASTBlock> next = new ASTCondBlock(ASTBlock::BLK_EXCEPT, pos+offs, NULL, false);
-                        next->init();
-
-                        blocks.push(next.cast<ASTBlock>());
-                        prev = nil;
-                    } else if (prev->blktype() == ASTBlock::BLK_ELSE) {
-                        /* Special case */
-                        prev = blocks.top();
-                        if (!push) {
-                            stack = stack_hist.top();
-                            stack_hist.pop();
-                        }
-                        push = false;
-
-                        if (prev->blktype() == ASTBlock::BLK_MAIN) {
-                            /* Something went out of control! */
-                            prev = nil;
-                        }
-                    } else if (prev->blktype() == ASTBlock::BLK_TRY
-                            && prev->end() < pos+offs) {
-                        /* Need to add an except/finally block */
-                        stack = stack_hist.top();
-                        stack.pop();
-                        if (blocks.top()->blktype() == ASTBlock::BLK_CONTAINER) {
-                            PycRef<ASTContainerBlock> cont = blocks.top().cast<ASTContainerBlock>();
-                            if (cont->hasExcept()) {
-                                if (push) {
-                                    stack_hist.push(stack);
-                                }
-                                PycRef<ASTBlock> except = new ASTCondBlock(ASTBlock::BLK_EXCEPT, pos+offs, NULL, false);
-                                except->init();
-                                blocks.push(except);
-                            }
-                        } else {
-                            fprintf(stderr, "Something TERRIBLE happened!!\n");
-                        }
-                        prev = nil;
-                    }
-                    else {
-                        prev = nil;
-                    }
-                } while (prev != nil);
-
-                if (blocks.size() > 0) {
-                    curblock = blocks.top();
-                    if (curblock && curblock->blktype() == ASTBlock::BLK_EXCEPT) {
-                        curblock->setEnd(pos+offs);
-                    }
                 }
-                else if (curblock) {
-                    curblock->setEnd(pos+offs);
+
+                if (!blocks.empty()) {
+                        curblock = blocks.top();
+                        if (curblock && curblock->blktype() == ASTBlock::BLK_EXCEPT)
+                                curblock->setEnd(pos + offs);
+                } else if (curblock) {
+                        curblock->setEnd(pos + offs);
                 }
-            }
-            break;                        
+        }
+        break;
+                        
         case Pyc::LIST_APPEND:
         case Pyc::LIST_APPEND_A:
             {
