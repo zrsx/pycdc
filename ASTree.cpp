@@ -5,6 +5,7 @@
 #include "FastStack.h"
 #include "pyc_numeric.h"
 #include "bytecode.h"
+#include <map>
 // This must be a triple quote (''' or """), to handle interpolated string literals containing the opposite quote style.
 // E.g. f'''{"interpolated "123' literal"}'''    -> valid.
 // E.g. f"""{"interpolated "123' literal"}"""    -> valid.
@@ -1354,11 +1355,10 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                         offs *= sizeof(uint16_t);        // Adjust offset for Python 3.10+
 
                 static std::map<std::pair<int, int>, bool> visited;
-
                 auto should_emit = [&](int blk_type, int pos, bool critical) {
                         auto key = std::make_pair(blk_type, pos);
-                        if (critical || emitted_blocks.find(key) == emitted_blocks.end()) {
-                                emitted_blocks[key] = true;        // Mark as emitted
+                        if (critical || visited.find(key) == visited.end()) {
+                                visited[key] = true;        // Mark as emitted
                                 return true;
                         }
                         return false;
