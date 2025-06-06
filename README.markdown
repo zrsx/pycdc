@@ -1,57 +1,164 @@
-# Decompyle++ 
-***A Python Byte-code Disassembler/Decompiler***
+# **Decompyle++ (pycdc) — zrsx Fork**
 
-Decompyle++ aims to translate compiled Python byte-code back into valid
-and human-readable Python source code. While other projects have achieved
-this with varied success, Decompyle++ is unique in that it seeks to
-support byte-code from any version of Python.
+*A blazing-fast Python bytecode decompiler & disassembler for Python 2.7–3.13*
 
-Decompyle++ includes both a byte-code disassembler (pycdas) and a 
-decompiler (pycdc).
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#)
+[![License](https://img.shields.io/github/license/zrsx/pycdc)](https://www.gnu.org/licenses/gpl-3.0.en.html)
+[![Python Versions](https://img.shields.io/badge/python-2.7--3.13-blue)](#)
+[![GitHub Stars](https://img.shields.io/github/stars/zrsx/pycdc?style=social)](https://github.com/zrsx/pycdc/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/zrsx/pycdc?style=social)](https://github.com/zrsx/pycdc/network)
+[![MSVC-CI](https://github.com/zrsx/pycdc/actions/workflows/msvc.yml/badge.svg)](https://github.com/zrsx/pycdc/actions/workflows/msvc.yml)
+[![Linux-CI](https://github.com/zrsx/pycdc/actions/workflows/linux-ci.yml/badge.svg)](https://github.com/zrsx/pycdc/actions/workflows/linux-ci.yml)
 
-As the name implies, Decompyle++ is written in C++.
-If you wish to contribute, please fork us on github at 
-https://github.com/zrax/pycdc
+**Issues:**
+[![Open Issues](https://img.shields.io/github/issues/zrsx/pycdc)](https://github.com/zrsx/pycdc/issues)
+[![Closed Issues](https://img.shields.io/github/issues-closed/zrsx/pycdc)](https://github.com/zrsx/pycdc/issues?q=is%3Aissue+is%3Aclosed)
 
-## Building Decompyle++
-* Generate a project or makefile with [CMake](http://www.cmake.org) (See CMake's documentation for details)
-  * The following options can be passed to CMake to control debug features:
+**Pull Requests:**
+[![Open PRs](https://img.shields.io/github/issues-pr/zrsx/pycdc)](https://github.com/zrsx/pycdc/pulls)
+[![Closed PRs](https://img.shields.io/github/issues-pr-closed/zrsx/pycdc)](https://github.com/zrsx/pycdc/pulls?q=is%3Apr+is%3Aclosed)
 
-    | Option | Description |
-    | --- | --- |
-    | `-DCMAKE_BUILD_TYPE=Debug` | Produce debugging symbols |
-    | `-DENABLE_BLOCK_DEBUG=ON` | Enable block debugging output |
-    | `-DENABLE_STACK_DEBUG=ON` | Enable stack debugging output |
+---
 
-* Build the generated project or makefile
-  * For projects (e.g. MSVC), open the generated project file and build it
-  * For makefiles, just run `make`
-  * To run tests (on \*nix or MSYS), run `make check JOBS=4` (optional
-    `FILTER=xxxx` to run only certain tests)
+## **Overview**
 
-## Usage
-**To run pycdas**, the PYC Disassembler:
-`./pycdas [PATH TO PYC FILE]`
-The byte-code disassembly is printed to stdout.
+**Decompyle++** is a fast, cross-version Python bytecode **decompiler** and **disassembler** written in C++. This fork by [**zrsx**](https://github.com/zrsx) extends the original [`pycdc`](https://github.com/zrax/pycdc) to support:
 
-**To run pycdc**, the PYC Decompiler: 
-`./pycdc [PATH TO PYC FILE]`
-The decompiled Python source is printed to stdout.
-Any errors are printed to stderr.
+* Python **2.7** through **3.13**
+* Newer opcode formats and edge cases
+* Marshalled code objects and `.pyc` files
+* High-speed native C++ processing
 
-**Marshalled code objects**:
-Both tools support Python marshalled code objects, as output from `marshal.dumps(compile(...))`.
+---
 
-To use this feature, specify `-c -v <version>` on the command line - the version must be specified as the objects themselves do not contain version metadata.
+## **Features**
 
-## Authors, Licence, Credits
-Decompyle++ is the work of Michael Hansen and Darryl Pogue.
+* Decompiles `.pyc` files to readable Python source
+* Disassembles bytecode into opcode instructions
+* Works with marshalled code objects (e.g., `.marshalled`)
+* Supports Python versions **2.7 – 3.13**
+* Fast, minimal, and standalone (no Python runtime needed)
 
-Additional contributions from:
-* charlietang98
-* Kunal Parmar
-* Olivier Iffrig
-* Zlodiy
+---
 
-It is released under the terms of the GNU General Public License, version 3;
-See LICENSE file for details.
+## **Installation**
+
+### **Dependencies**
+
+Install the required packages:
+
+```bash
+sudo apt update
+sudo apt install build-essential cmake git python3-dev
+```
+
+| Package           | Description                         |
+| ----------------- | ----------------------------------- |
+| `build-essential` | Compilers and build tools           |
+| `cmake`           | Build system generator              |
+| `git`             | Repository cloning                  |
+| `python3-dev`     | Python headers (for opcode support) |
+
+---
+
+### **Build**
+
+```bash
+git clone https://github.com/zrsx/pycdc.git
+cd pycdc
+cmake .
+make
+```
+
+Optional: Run the test suite
+
+```bash
+make check
+```
+
+---
+
+## **Usage**
+
+### Decompile `.pyc` File
+
+```bash
+./pycdc path/to/file.pyc
+```
+
+### Disassemble `.pyc` File
+
+```bash
+./pycdas path/to/file.pyc
+```
+
+### Decompile Marshalled Code
+
+```bash
+./pycdc -c -v 3.13 path/to/file.marshalled
+```
+
+#### **Flags**
+
+| Flag | Description                                   |
+| ---- | --------------------------------------------- |
+| `-c` | Treat input as marshalled code                |
+| `-v` | Specify Python version (e.g., `3.11`, `3.13`) |
+
+---
+
+## **Examples**
+
+```bash
+./pycdas __pycache__/example.cpython-312.pyc
+./pycdc -c -v 3.13 dumped_code.marshalled
+```
+
+---
+
+## **Reporting Issues**
+
+Help us improve! If you find:
+
+* Crashes
+* Incorrect output
+* Unsupported opcodes (e.g., `UNSUPPORTED_OPCODE 218`)
+
+Please open an issue at:
+[https://github.com/zrsx/pycdc/issues](https://github.com/zrsx/pycdc/issues)
+
+Include:
+
+* Python version used to generate the `.pyc`
+* The `.pyc` or `.marshalled` file (if possible)
+* Full output/error logs
+* Minimal source snippet (if relevant)
+
+---
+
+## **License**
+
+Distributed under the terms of the
+**GNU General Public License v3.0**
+[View License](https://www.gnu.org/licenses/gpl-3.0.en.html)
+
+---
+
+## **Credits**
+
+* **Fork Maintainer**: [zrsx](https://github.com/zrsx)
+* **Original Authors**: Michael Hansen, Darryl Pogue
+* **Notable Contributors**:
+  charlietang98 • Kunal Parmar • Olivier Iffrig • Zlodiy • George
+
+---
+
+## **Contributing**
+
+We welcome:
+
+* Opcode/bytecode updates
+* Bug reports and feature requests
+* Pull requests for enhancements or fixes
+
+**Star** the repo to support continued development.
