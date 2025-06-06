@@ -5,7 +5,7 @@
 #include "FastStack.h"
 #include "pyc_numeric.h"
 #include "bytecode.h"
-
+#include <unordered_map>
 // This must be a triple quote (''' or """), to handle interpolated string literals containing the opposite quote style.
 // E.g. f'''{"interpolated "123' literal"}'''    -> valid.
 // E.g. f"""{"interpolated "123' literal"}"""    -> valid.
@@ -1411,7 +1411,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                         switch (type) {
                                 case ASTBlock::BLK_IF:
                                 case ASTBlock::BLK_ELIF:
-                                        should_emit(ASTBlock::BLK_ELSE, target, false)) {
+                                        if (should_emit(ASTBlock::BLK_ELSE, target, false)) {
                                                 if (push_stack) stack_hist.push(stack);
                                                 PycRef<ASTBlock> next = new ASTBlock(ASTBlock::BLK_ELSE, target);
                                                 if (prev->inited() == ASTCondBlock::PRE_POPPED)
@@ -1483,6 +1483,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 }
         }
         break;
+
                         
         case Pyc::LIST_APPEND:
         case Pyc::LIST_APPEND_A:
