@@ -7,7 +7,7 @@
 [![Python Versions](https://img.shields.io/badge/python-2.7--3.13-blue)](#)
 [![GitHub Stars](https://img.shields.io/github/stars/zrsx/pycdc?style=social)](https://github.com/zrsx/pycdc/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/zrsx/pycdc?style=social)](https://github.com/zrsx/pycdc/network)
-[![MSVC-CI](https://github.com/zrsx/pycdc/actions/workflows/msvc.yml/badge.svg)](https://github.com/zrsx/pycdc/actions/workflows/msvc.yml)
+[![MSVC-CI](https://github.com/zrsx/pycdc/actions/workflows/msvc-ci.yml/badge.svg)]
 [![Linux-CI](https://github.com/zrsx/pycdc/actions/workflows/linux-ci.yml/badge.svg)](https://github.com/zrsx/pycdc/actions/workflows/linux-ci.yml)
 
 **Issues:**
