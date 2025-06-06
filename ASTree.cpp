@@ -5,17 +5,6 @@
 #include "FastStack.h"
 #include "pyc_numeric.h"
 #include "bytecode.h"
-#include <unordered_map>
-#include <functional>
-
-struct pair_hash {
-    template <class T1, class T2>
-    std::size_t operator()(const std::pair<T1, T2>& p) const {
-        auto h1 = std::hash<T1>{}(p.first);
-        auto h2 = std::hash<T2>{}(p.second);
-        return h1 ^ (h2 << 1); // Or use boost::hash_combine
-    }
-};
 // This must be a triple quote (''' or """), to handle interpolated string literals containing the opposite quote style.
 // E.g. f'''{"interpolated "123' literal"}'''    -> valid.
 // E.g. f"""{"interpolated "123' literal"}"""    -> valid.
@@ -1364,7 +1353,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 if (mod->verCompare(3, 10) >= 0)
                         offs *= sizeof(uint16_t);        // Adjust offset for Python 3.10+
 
-                static std::unordered_map<std::pair<int, int>, bool, pair_hash> emitted_blocks;
+                static std::map<std::pair<int, int>, bool> visited;
 
                 auto should_emit = [&](int blk_type, int pos, bool critical) {
                         auto key = std::make_pair(blk_type, pos);
