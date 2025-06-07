@@ -5,7 +5,7 @@
 #include "FastStack.h"
 #include "pyc_numeric.h"
 #include "bytecode.h"
-
+#include <map>
 // This must be a triple quote (''' or """), to handle interpolated string literals containing the opposite quote style.
 // E.g. f'''{"interpolated "123' literal"}'''    -> valid.
 // E.g. f"""{"interpolated "123' literal"}"""    -> valid.
@@ -1347,6 +1347,8 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 curblock = blocks.top();
             }
             break;
+        
+        
         case Pyc::JUMP_FORWARD_A:
         case Pyc::INSTRUMENTED_JUMP_FORWARD_A:
             {
@@ -1439,14 +1441,12 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                         /* Need to add an except/finally block */
                         stack = stack_hist.top();
                         stack.pop();
-
                         if (blocks.top()->blktype() == ASTBlock::BLK_CONTAINER) {
                             PycRef<ASTContainerBlock> cont = blocks.top().cast<ASTContainerBlock>();
                             if (cont->hasExcept()) {
                                 if (push) {
                                     stack_hist.push(stack);
                                 }
-
                                 PycRef<ASTBlock> except = new ASTCondBlock(ASTBlock::BLK_EXCEPT, pos+offs, NULL, false);
                                 except->init();
                                 blocks.push(except);
@@ -1455,19 +1455,23 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                             fprintf(stderr, "Something TERRIBLE happened!!\n");
                         }
                         prev = nil;
-                    } else {
+                    }
+                    else {
                         prev = nil;
                     }
-
                 } while (prev != nil);
 
-                curblock = blocks.top();
-
-                if (curblock->blktype() == ASTBlock::BLK_EXCEPT) {
+                if (blocks.size() > 0) {
+                    curblock = blocks.top();
+                    if (curblock && curblock->blktype() == ASTBlock::BLK_EXCEPT) {
+                        curblock->setEnd(pos+offs);
+                    }
+                }
+                else if (curblock) {
                     curblock->setEnd(pos+offs);
                 }
             }
-            break;
+            break;                                        
         case Pyc::LIST_APPEND:
         case Pyc::LIST_APPEND_A:
             {
