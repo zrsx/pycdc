@@ -1,9 +1,9 @@
 name: MSVC-CI
 on:
   push:
-    branches: [ main ]
+    branches: [ __main__ ]
   pull_request:
-    branches: [ main ]
+    branches: [ __main__ ]
   workflow_dispatch:
 
 jobs:
