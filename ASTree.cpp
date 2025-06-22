@@ -1087,7 +1087,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::INSTRUMENTED_POP_JUMP_IF_NOT_NONE_A:
         case Pyc::INSTRUMENTED_POP_JUMP_IF_TRUE_A:
         case Pyc::INTERPRETER_EXIT:
-        case Pyc::JUMP_BACKWARD_A:
         case Pyc::JUMP_BACKWARD_NO_INTERRUPT_A:
         case Pyc::JUMP_IF_FALSE_A:
         case Pyc::JUMP_IF_FALSE_OR_POP_A:
@@ -1268,6 +1267,54 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 curblock = blocks.top();
             }
             break;
+        case Pyc::JUMP_BACKWARD_A:
+        {
+            int delta = operand;
+            if (mod->verCompare(3, 10) >= 0) {
+                delta *= sizeof(uint16_t);
+            }
+            int offs = pos - delta;
+
+            if (curblock->blktype() == ASTBlock::BLK_FOR) {
+                bool is_jump_to_start = offs == curblock.cast<ASTIterBlock>()->start();
+                bool should_pop_for_block = curblock.cast<ASTIterBlock>()->isComprehension();
+                bool should_add_for_block = mod->majorVer() == 3 && mod->minorVer() >= 8 && is_jump_to_start && !curblock.cast<ASTIterBlock>()->isComprehension();
+
+                if (should_pop_for_block || should_add_for_block) {
+                    PycRef<ASTNode> top = stack.top();
+
+                    if (top.type() == ASTNode::NODE_COMPREHENSION) {
+                        PycRef<ASTComprehension> comp = top.cast<ASTComprehension>();
+                        comp->addGenerator(curblock.cast<ASTIterBlock>());
+                    }
+
+                    PycRef<ASTBlock> tmp = curblock;
+                    blocks.pop();
+                    curblock = blocks.top();
+                    if (should_add_for_block) {
+                        curblock->append(tmp.cast<ASTNode>());
+                    }
+                }
+            } else if (curblock->blktype() == ASTBlock::BLK_ELSE) {
+                stack = stack_hist.top();
+                stack_hist.pop();
+
+                blocks.pop();
+                blocks.top()->append(curblock.cast<ASTNode>());
+                curblock = blocks.top();
+
+                if (curblock->blktype() == ASTBlock::BLK_CONTAINER
+                        && !curblock.cast<ASTContainerBlock>()->hasFinally()) {
+                    blocks.pop();
+                    blocks.top()->append(curblock.cast<ASTNode>());
+                    curblock = blocks.top();
+                }
+            } else {
+                curblock->append(new ASTKeyword(ASTKeyword::KW_CONTINUE));
+            }
+
+            break;
+        }
         case Pyc::JUMP_ABSOLUTE_A:
             {
                 int offs = operand;
