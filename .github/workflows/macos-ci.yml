@@ -1,0 +1,37 @@
+name: macOS-CI
+
+on:
+  push:
+    branches: [__main__]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure and Build Debug
+        run: |
+          mkdir build-debug && cd build-debug
+          cmake -DCMAKE_BUILD_TYPE=Debug ..
+          make -j4
+
+      - name: Configure and Build Release
+        run: |
+          mkdir build-release && cd build-release
+          cmake -DCMAKE_BUILD_TYPE=Release ..
+          make -j4
+
+      - name: Test Debug
+        run: cmake --build build-debug --target check
+
+      - name: Test Release
+        run: cmake --build build-release --target check
+
+      - name: Upload Release Executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: pycdc-release
+          path: build-release/*
+          
