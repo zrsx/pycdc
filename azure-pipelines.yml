@@ -1,19 +1,56 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
-- __main__
+  branches:
+    include:
+      - __main__
 
-pool:
-  vmImage: ubuntu-latest
+stages:
+- stage: __default
+  jobs:
+  - job: BuildAndTest
+    pool:
+      vmImage: ubuntu-latest
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+    steps:
+    - checkout: self
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    - task: CmdLine@2
+      displayName: 'Run a one-line script'
+      inputs:
+        script: echo Hello, world!
+
+    - task: CmdLine@2
+      displayName: 'Run a multi-line script'
+      inputs:
+        script: |
+          echo Add other tasks to build, test, and deploy your project.
+          echo See https://aka.ms/yaml
+
+    - task: CmdLine@2
+      displayName: 'Configure and Build Debug'
+      inputs:
+        script: |
+          mkdir build-debug && cd build-debug
+          cmake -DCMAKE_BUILD_TYPE=Debug ..
+          make -j4
+
+    - task: CmdLine@2
+      displayName: 'Test Debug Build'
+      inputs:
+        script: |
+          cd build-debug
+          ctest --output-on-failure || true
+
+    - task: CmdLine@2
+      displayName: 'Configure and Build Release'
+      inputs:
+        script: |
+          mkdir build-release && cd build-release
+          cmake -DCMAKE_BUILD_TYPE=Release ..
+          make -j4
+
+    - task: CmdLine@2
+      displayName: 'Test Release Build'
+      inputs:
+        script: |
+          cd build-release
+          ctest --output-on-failure || true
