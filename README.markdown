@@ -123,11 +123,11 @@ Prebuilt `.zip` files for Windows, Linux, and macOS are automatically generated 
 
 📦 **Download from GitHub Actions Artifacts**:
 
-| Platform | Executable Zip | Notes |
-|----------|----------------|-------|
-| 🪟 Windows | [Download](https://github.com/zrsx/pycdc/actions/workflows/msvc-ci.yml) | Built via MSVC |
-| 🐧 Linux   | [Download](https://github.com/zrsx/pycdc/actions/workflows/linux-ci.yml) | Built via GCC |
-| 🍎 macOS   | *(coming soon)* | Planned |
+| Platform     | Executable Zip                                                                 | Notes           |
+|--------------|----------------------------------------------------------------------------------|-----------------|
+| 🪟 Windows   | [Download](https://github.com/zrsx/pycdc/actions/workflows/msvc-ci.yml)        | Built via MSVC  |
+| 🐧 Linux     | [Download](https://github.com/zrsx/pycdc/actions/workflows/linux-ci.yml)       | Built via GCC   |
+| 🍎 macOS     | [Download](https://github.com/zrsx/pycdc/actions/workflows/macos-ci.yml)       | Built via Clang |
 
 > 🔧 Visit the relevant workflow, click on the latest successful run, and scroll down to the **Artifacts** section to download.
 
