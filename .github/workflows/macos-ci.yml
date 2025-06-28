@@ -1,4 +1,4 @@
-name: Linux-CI
+name: macOS-CI
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -34,3 +34,4 @@ jobs:
         with:
           name: pycdc-release
           path: build-release/*
+          
