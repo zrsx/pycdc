@@ -4,53 +4,156 @@ trigger:
       - __main__
 
 stages:
-- stage: __default
+- stage: BuildAndTest
   jobs:
-  - job: BuildAndTest
+
+  # Ubuntu x64
+  - job: Ubuntu_x64
+    strategy:
+      matrix:
+        Debug:
+          buildType: Debug
+        Release:
+          buildType: Release
     pool:
       vmImage: ubuntu-latest
-
     steps:
     - checkout: self
 
-    - task: CmdLine@2
-      displayName: 'Run a one-line script'
-      inputs:
-        script: echo Hello, world!
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y ccache
+        export PATH="/usr/lib/ccache:$PATH"
+      displayName: 'Install ccache'
 
-    - task: CmdLine@2
-      displayName: 'Run a multi-line script'
-      inputs:
-        script: |
-          echo Add other tasks to build, test, and deploy your project.
-          echo See https://aka.ms/yaml
+    - script: |
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=$(buildType) \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+        make -j$(nproc)
+      displayName: 'Build Ubuntu x64 $(buildType)'
 
-    - task: CmdLine@2
-      displayName: 'Configure and Build Debug'
-      inputs:
-        script: |
-          mkdir build-debug && cd build-debug
-          cmake -DCMAKE_BUILD_TYPE=Debug ..
-          make -j4
+    - script: |
+        cd build
+        ctest --output-on-failure
+      displayName: 'Test Ubuntu x64 $(buildType)'
+      continueOnError: true
 
-    - task: CmdLine@2
-      displayName: 'Test Debug Build'
+    - task: PublishBuildArtifacts@1
+      condition: eq(variables['buildType'], 'Release')
       inputs:
-        script: |
-          cd build-debug
-          ctest --output-on-failure || true
+        PathtoPublish: 'build'
+        ArtifactName: 'Ubuntu_x64_Release'
+        publishLocation: 'Container'
 
-    - task: CmdLine@2
-      displayName: 'Configure and Build Release'
-      inputs:
-        script: |
-          mkdir build-release && cd build-release
-          cmake -DCMAKE_BUILD_TYPE=Release ..
-          make -j4
+  # Ubuntu ARM64 (cross-compile)
+  - job: Ubuntu_ARM64
+    strategy:
+      matrix:
+        Debug:
+          buildType: Debug
+        Release:
+          buildType: Release
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - checkout: self
 
-    - task: CmdLine@2
-      displayName: 'Test Release Build'
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu ccache
+        export PATH="/usr/lib/ccache:$PATH"
+      displayName: 'Install ARM toolchain + ccache'
+
+    - script: |
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=$(buildType) \
+              -DCMAKE_SYSTEM_NAME=Linux \
+              -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+              -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+              -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+        make -j$(nproc)
+      displayName: 'Cross-compile Ubuntu ARM64 $(buildType)'
+
+    - script: echo "Skipping test for ARM64 (not executable on x64 agent)"
+      displayName: 'Skip ARM64 Test'
+
+    - task: PublishBuildArtifacts@1
+      condition: eq(variables['buildType'], 'Release')
       inputs:
-        script: |
-          cd build-release
-          ctest --output-on-failure || true
+        PathtoPublish: 'build'
+        ArtifactName: 'Ubuntu_ARM64_Release'
+        publishLocation: 'Container'
+
+  # Windows x64
+  - job: Windows_x64
+    strategy:
+      matrix:
+        Debug:
+          buildType: Debug
+        Release:
+          buildType: Release
+    pool:
+      vmImage: windows-latest
+    steps:
+    - checkout: self
+
+    - script: |
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=$(buildType) ..
+        cmake --build . --config $(buildType)
+      displayName: 'Build Windows x64 $(buildType)'
+
+    - script: |
+        cd build
+        ctest -C $(buildType) --output-on-failure
+      displayName: 'Test Windows x64 $(buildType)'
+      continueOnError: true
+
+    - task: PublishBuildArtifacts@1
+      condition: eq(variables['buildType'], 'Release')
+      inputs:
+        PathtoPublish: 'build'
+        ArtifactName: 'Windows_x64_Release'
+        publishLocation: 'Container'
+
+  # macOS x64
+  - job: MacOS_x64
+    strategy:
+      matrix:
+        Debug:
+          buildType: Debug
+        Release:
+          buildType: Release
+    pool:
+      vmImage: macos-latest
+    steps:
+    - checkout: self
+
+    - script: |
+        brew install ccache
+        export PATH="/opt/homebrew/opt/ccache/libexec:$PATH"
+      displayName: 'Install ccache for macOS'
+
+    - script: |
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=$(buildType) \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+        make -j$(sysctl -n hw.ncpu)
+      displayName: 'Build macOS x64 $(buildType)'
+
+    - script: |
+        cd build
+        ctest --output-on-failure
+      displayName: 'Test macOS x64 $(buildType)'
+      continueOnError: true
+
+    - task: PublishBuildArtifacts@1
+      condition: eq(variables['buildType'], 'Release')
+      inputs:
+        PathtoPublish: 'build'
+        ArtifactName: 'MacOS_x64_Release'
+        publishLocation: 'Container'
+        
