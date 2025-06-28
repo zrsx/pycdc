@@ -111,10 +111,27 @@ make check
 
 ```bash
 ./pycdas __pycache__/example.cpython-312.pyc
-./pycdc -c -v 3.13 dumped_code.marshalled
 ```
 
 ---
+
+## **Prebuilt Executables**
+
+Looking for a ready-to-use binary?
+
+Prebuilt `.zip` files for Windows, Linux, and macOS are automatically generated on every successful CI run.
+
+📦 **Download from GitHub Actions Artifacts**:
+
+| Platform     | Executable Zip                                                                 | Notes           |
+|--------------|----------------------------------------------------------------------------------|-----------------|
+| 🪟 Windows   | [Download](https://github.com/zrsx/pycdc/actions/workflows/msvc-ci.yml)        | Built via MSVC  |
+| 🐧 Linux     | [Download](https://github.com/zrsx/pycdc/actions/workflows/linux-ci.yml)       | Built via GCC   |
+| 🍎 macOS     | [Download](https://github.com/zrsx/pycdc/actions/workflows/macos-ci.yml)       | Built via Clang |
+
+> 🔧 Visit the relevant workflow, click on the latest successful run, and scroll down to the **Artifacts** section to download.
+
+
 
 ## **Reporting Issues**
 
