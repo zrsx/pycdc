@@ -34,10 +34,9 @@ stages:
       displayName: 'Build Ubuntu x64 $(buildType)'
 
     - script: |
-        cd build
-        ctest --output-on-failure
-      displayName: 'Test Ubuntu x64 $(buildType)'
-      continueOnError: true
+        python3 ../pycdc/tests/run_tests.py
+      displayName: 'Run Python Tests (Ubuntu x64)'
+      continueOnError: $[ne(variables['buildType'], 'Release')]
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -107,16 +106,47 @@ stages:
       displayName: 'Build Windows x64 $(buildType)'
 
     - script: |
-        cd build
-        ctest -C $(buildType) --output-on-failure
-      displayName: 'Test Windows x64 $(buildType)'
-      continueOnError: true
+        python -3 ../pycdc/tests/run_tests.py
+      displayName: 'Run Python Tests (Windows x64)'
+      continueOnError: $[ne(variables['buildType'], 'Release')]
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
       inputs:
         PathtoPublish: 'build'
         ArtifactName: 'Windows_x64_Release'
+        publishLocation: 'Container'
+
+  # Windows x86
+  - job: Windows_x86
+    strategy:
+      matrix:
+        Debug:
+          buildType: Debug
+        Release:
+          buildType: Release
+    pool:
+      vmImage: windows-latest
+    steps:
+    - checkout: self
+
+    - script: |
+        mkdir build
+        cd build
+        cmake -A Win32 -DCMAKE_BUILD_TYPE=$(buildType) ..
+        cmake --build . --config $(buildType)
+      displayName: 'Build Windows x86 $(buildType)'
+
+    - script: |
+        python -3 ../pycdc/tests/run_tests.py
+      displayName: 'Run Python Tests (Windows x86)'
+      continueOnError: $[ne(variables['buildType'], 'Release')]
+
+    - task: PublishBuildArtifacts@1
+      condition: eq(variables['buildType'], 'Release')
+      inputs:
+        PathtoPublish: 'build'
+        ArtifactName: 'Windows_x86_Release'
         publishLocation: 'Container'
 
   # macOS x64
@@ -145,10 +175,9 @@ stages:
       displayName: 'Build macOS x64 $(buildType)'
 
     - script: |
-        cd build
-        ctest --output-on-failure
-      displayName: 'Test macOS x64 $(buildType)'
-      continueOnError: true
+        python3 ../pycdc/tests/run_tests.py
+      displayName: 'Run Python Tests (macOS)'
+      continueOnError: $[ne(variables['buildType'], 'Release')]
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
