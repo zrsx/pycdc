@@ -37,7 +37,7 @@ stages:
         cd build
         ctest --output-on-failure
       displayName: 'Test Ubuntu x64 $(buildType)'
-      continueOnError: true
+      continueOnError: $[ne(variables['buildType'], 'Release')]
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -76,8 +76,8 @@ stages:
         make -j$(nproc)
       displayName: 'Cross-compile Ubuntu ARM64 $(buildType)'
 
-    - script: echo "Skipping test for ARM64 (not executable on x64 agent)"
-      displayName: 'Skip ARM64 Test'
+    - script: echo "Skipping tests for cross-compiled ARM64"
+      displayName: 'Skip ARM64 Tests'
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -110,7 +110,7 @@ stages:
         cd build
         ctest -C $(buildType) --output-on-failure
       displayName: 'Test Windows x64 $(buildType)'
-      continueOnError: true
+      continueOnError: $[ne(variables['buildType'], 'Release')]
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -143,7 +143,7 @@ stages:
         cd build
         ctest -C $(buildType) --output-on-failure
       displayName: 'Test Windows x86 $(buildType)'
-      continueOnError: true
+      continueOnError: $[ne(variables['buildType'], 'Release')]
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -181,7 +181,7 @@ stages:
         cd build
         ctest --output-on-failure
       displayName: 'Test macOS x64 $(buildType)'
-      continueOnError: true
+      continueOnError: $[ne(variables['buildType'], 'Release')]
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
