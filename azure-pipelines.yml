@@ -119,6 +119,39 @@ stages:
         ArtifactName: 'Windows_x64_Release'
         publishLocation: 'Container'
 
+  # Windows x86
+  - job: Windows_x86
+    strategy:
+      matrix:
+        Debug:
+          buildType: Debug
+        Release:
+          buildType: Release
+    pool:
+      vmImage: windows-latest
+    steps:
+    - checkout: self
+
+    - script: |
+        mkdir build
+        cd build
+        cmake -A Win32 -DCMAKE_BUILD_TYPE=$(buildType) ..
+        cmake --build . --config $(buildType)
+      displayName: 'Build Windows x86 $(buildType)'
+
+    - script: |
+        cd build
+        ctest -C $(buildType) --output-on-failure
+      displayName: 'Test Windows x86 $(buildType)'
+      continueOnError: true
+
+    - task: PublishBuildArtifacts@1
+      condition: eq(variables['buildType'], 'Release')
+      inputs:
+        PathtoPublish: 'build'
+        ArtifactName: 'Windows_x86_Release'
+        publishLocation: 'Container'
+
   # macOS x64
   - job: MacOS_x64
     strategy:
@@ -156,4 +189,3 @@ stages:
         PathtoPublish: 'build'
         ArtifactName: 'MacOS_x64_Release'
         publishLocation: 'Container'
-        
