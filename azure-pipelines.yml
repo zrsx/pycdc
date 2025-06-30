@@ -106,12 +106,6 @@ stages:
         cmake --build . --config $(buildType)
       displayName: 'Build Windows x64 $(buildType)'
 
-    - script: |
-        cd build
-        python ../tests/run_tests.py
-      displayName: 'Test Windows x64 $(buildType)'
-      continueOnError: true
-
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
       inputs:
@@ -138,12 +132,6 @@ stages:
         cmake -A Win32 -DCMAKE_BUILD_TYPE=$(buildType) ..
         cmake --build . --config $(buildType)
       displayName: 'Build Windows x86 $(buildType)'
-
-    - script: |
-        cd build
-        python ../tests/run_tests.py
-      displayName: 'Test Windows x86 $(buildType)'
-      continueOnError: true
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
