@@ -35,7 +35,7 @@ stages:
 
     - script: |
         cd build
-        ctest --output-on-failure
+        python3 ../tests/run_tests.py
       displayName: 'Test Ubuntu x64 $(buildType)'
       continueOnError: true
 
@@ -108,7 +108,7 @@ stages:
 
     - script: |
         cd build
-        ctest -C $(buildType) --output-on-failure
+        python ../tests/run_tests.py
       displayName: 'Test Windows x64 $(buildType)'
       continueOnError: true
 
@@ -141,7 +141,7 @@ stages:
 
     - script: |
         cd build
-        ctest -C $(buildType) --output-on-failure
+        python ../tests/run_tests.py
       displayName: 'Test Windows x86 $(buildType)'
       continueOnError: true
 
@@ -179,7 +179,7 @@ stages:
 
     - script: |
         cd build
-        ctest --output-on-failure
+        python3 ../tests/run_tests.py
       displayName: 'Test macOS x64 $(buildType)'
       continueOnError: true
 
