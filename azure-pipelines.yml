@@ -3,8 +3,10 @@ trigger:
     include:
       - __main__
 
+pr: none
+
 stages:
-- stage: BuildAndTest
+- stage: build
   jobs:
 
   # Ubuntu x64
@@ -13,8 +15,10 @@ stages:
       matrix:
         Debug:
           buildType: Debug
+          continueOnError: true
         Release:
           buildType: Release
+          continueOnError: false
     pool:
       vmImage: ubuntu-latest
     steps:
@@ -34,9 +38,9 @@ stages:
       displayName: 'Build Ubuntu x64 $(buildType)'
 
     - script: |
-        python3 ../pycdc/tests/run_tests.py
-      displayName: 'Run Python Tests (Ubuntu x64)'
-      continueOnError: $[ne(variables['buildType'], 'Release')]
+        python3 pycdc/tests/run_tests.py
+      displayName: 'Run Python Tests on Ubuntu x64 $(buildType)'
+      continueOnError: ${{ variables.continueOnError }}
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -51,8 +55,10 @@ stages:
       matrix:
         Debug:
           buildType: Debug
+          continueOnError: true
         Release:
           buildType: Release
+          continueOnError: false
     pool:
       vmImage: ubuntu-latest
     steps:
@@ -75,8 +81,8 @@ stages:
         make -j$(nproc)
       displayName: 'Cross-compile Ubuntu ARM64 $(buildType)'
 
-    - script: echo "Skipping test for ARM64 (not executable on x64 agent)"
-      displayName: 'Skip ARM64 Test'
+    - script: echo "Skipping tests for cross-compiled ARM64"
+      displayName: 'Skip ARM64 Tests'
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -91,8 +97,10 @@ stages:
       matrix:
         Debug:
           buildType: Debug
+          continueOnError: true
         Release:
           buildType: Release
+          continueOnError: false
     pool:
       vmImage: windows-latest
     steps:
@@ -106,9 +114,9 @@ stages:
       displayName: 'Build Windows x64 $(buildType)'
 
     - script: |
-        python -3 ../pycdc/tests/run_tests.py
-      displayName: 'Run Python Tests (Windows x64)'
-      continueOnError: $[ne(variables['buildType'], 'Release')]
+        python pycdc/tests/run_tests.py
+      displayName: 'Run Python Tests on Windows x64 $(buildType)'
+      continueOnError: ${{ variables.continueOnError }}
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -123,8 +131,10 @@ stages:
       matrix:
         Debug:
           buildType: Debug
+          continueOnError: true
         Release:
           buildType: Release
+          continueOnError: false
     pool:
       vmImage: windows-latest
     steps:
@@ -138,9 +148,9 @@ stages:
       displayName: 'Build Windows x86 $(buildType)'
 
     - script: |
-        python -3 ../pycdc/tests/run_tests.py
-      displayName: 'Run Python Tests (Windows x86)'
-      continueOnError: $[ne(variables['buildType'], 'Release')]
+        python pycdc/tests/run_tests.py
+      displayName: 'Run Python Tests on Windows x86 $(buildType)'
+      continueOnError: ${{ variables.continueOnError }}
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -155,8 +165,10 @@ stages:
       matrix:
         Debug:
           buildType: Debug
+          continueOnError: true
         Release:
           buildType: Release
+          continueOnError: false
     pool:
       vmImage: macos-latest
     steps:
@@ -175,9 +187,9 @@ stages:
       displayName: 'Build macOS x64 $(buildType)'
 
     - script: |
-        python3 ../pycdc/tests/run_tests.py
-      displayName: 'Run Python Tests (macOS)'
-      continueOnError: $[ne(variables['buildType'], 'Release')]
+        python3 pycdc/tests/run_tests.py
+      displayName: 'Run Python Tests on macOS x64 $(buildType)'
+      continueOnError: ${{ variables.continueOnError }}
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
