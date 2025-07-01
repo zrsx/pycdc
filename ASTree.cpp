@@ -1063,7 +1063,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::DICT_MERGE_A:
         case Pyc::DICT_UPDATE_A:
         case Pyc::END_ASYNC_FOR:
-        case Pyc::END_FOR:
         case Pyc::END_SEND:
         case Pyc::ENTER_EXECUTOR_A:
         case Pyc::EXIT_INIT_CHECK:
@@ -1853,6 +1852,31 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
         case Pyc::POP_EXCEPT:
             /* Do nothing. */
+            break;
+        case Pyc::END_FOR:
+            {
+                stack.pop();
+
+                if ((opcode == Pyc::END_FOR) && (mod->majorVer() == 3) && (mod->minorVer() == 12)) {
+                    // one additional pop for python 3.12
+                    stack.pop();
+                }
+
+                // end for loop here
+                // TODO : Ensure that FOR loop ends here. 
+                // Due to CACHE instructions at play, this can change.
+                if (curblock->blktype() == ASTBlock::BLK_FOR) {
+                    PycRef<ASTBlock> prev = blocks.top();
+                    blocks.pop();
+
+                    curblock = blocks.top();
+                    curblock->append(prev.cast<ASTNode>());
+                }
+                else {
+                    fprintf(stderr, "Wrong block type %i for END_FOR\n", curblock->blktype());
+                    break;
+                }
+            }
             break;
         case Pyc::POP_TOP:
             {
