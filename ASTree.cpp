@@ -1084,7 +1084,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::INSTRUMENTED_POP_JUMP_IF_NOT_NONE_A:
         case Pyc::INSTRUMENTED_POP_JUMP_IF_TRUE_A:
         case Pyc::INTERPRETER_EXIT:
-        case Pyc::JUMP_BACKWARD_NO_INTERRUPT_A:
         case Pyc::JUMP_IF_FALSE_A:
         case Pyc::JUMP_IF_FALSE_OR_POP_A:
         case Pyc::JUMP_IF_NOT_EXC_MATCH_A:
