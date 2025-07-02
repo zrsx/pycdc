@@ -1265,6 +1265,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             }
             break;
         case Pyc::JUMP_BACKWARD_A:
+        case Pyc::JUMP_BACKWARD_NO_INTERRUPT_A:
         {
             int delta = operand;
             if (mod->verCompare(3, 10) >= 0) {
@@ -1861,8 +1862,10 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 }
 
                 // end for loop here
-                // TODO : Ensure that FOR loop ends here. 
-                // Due to CACHE instructions at play, this can change.
+                /* TODO : Ensure that FOR loop ends here. 
+                   Due to CACHE instructions at play, the end indicated in
+                   the for loop by pycdas is not correct, it is off by
+                   some small amount. */
                 if (curblock->blktype() == ASTBlock::BLK_FOR) {
                     PycRef<ASTBlock> prev = blocks.top();
                     blocks.pop();
@@ -1872,7 +1875,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 }
                 else {
                     fprintf(stderr, "Wrong block type %i for END_FOR\n", curblock->blktype());
-                    break;
                 }
             }
             break;
