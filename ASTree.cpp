@@ -1082,21 +1082,18 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
 }
         case Pyc::CALL_INTRINSIC_1_A:
         case Pyc::CALL_INTRINSIC_2_A: {
-            // Pop required arguments based on opcode
-            // You may want to define a new ASTIntrinsic node, or just treat as a call to a known function.
-            // For now, treat similar to ASTCall for simplicity:
             int num_args = (opcode == Pyc::CALL_INTRINSIC_1_A) ? 1 : 2;
             ASTCall::pparam_t pparams;
             for (int i = 0; i < num_args; ++i) {
                 pparams.push_front(stack.top());
                 stack.pop();
             }
-            // The function/intrinsic itself may be implicit, or you may want to create a named node.
-            // For now, use a placeholder:
-            PycRef<ASTNode> intrinsic = new ASTName(PycString::fromStd("INTRINSIC"));
+            PycRef<PycString> s = new PycString("INTRINSIC");
+            PycRef<ASTNode> intrinsic = new ASTName(s);
             stack.push(new ASTCall(intrinsic, pparams, ASTCall::kwparam_t()));
             break;
         }
+
         case Pyc::CALL_FUNCTION_EX_A: {
             PycRef<ASTNode> kwargs;
             if (operand & 0x01) {
@@ -1111,14 +1108,15 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             ASTCall::pparam_t pparams;
             ASTCall::kwparam_t kwparams;
 
+            // No ASTStarred/ASTDoubleStarred available; just add args as-is
             if (args)
-                pparams.push_back(new ASTStarred(args));
+                pparams.push_back(args); // TODO: mark as unpacked
             if (kwargs)
-                kwparams.push_back(std::make_pair(new ASTDoubleStarred(kwargs), nullptr));
+                kwparams.push_back(std::make_pair(kwargs, nullptr)); // TODO: mark as double-starred
 
             stack.push(new ASTCall(func, pparams, kwparams));
             break;
-        }
+}
         case Pyc::IMPORT_FROM_A:
             stack.push(new ASTName(code->getName(operand)));
             break;
