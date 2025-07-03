@@ -957,6 +957,30 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 stack.push(NULL); // We can totally hack this >_>
             }
             break;
+        case Pyc::RERAISE:
+        case Pyc::RERAISE_A:
+            {
+                // RERAISE and RERAISE_A both mean "raise" with no arguments (re-raise the current exception)
+                ASTRaise::param_t paramList; // empty
+                curblock->append(new ASTRaise(paramList));
+
+                // If we are in an if/else block and Python >= 2.6, pop stack/block as with other control transfer
+                if ((curblock->blktype() == ASTBlock::BLK_IF
+                        || curblock->blktype() == ASTBlock::BLK_ELSE)
+                        && stack_hist.size()
+                        && (mod->verCompare(2, 6) >= 0)) {
+                    stack = stack_hist.top();
+                    stack_hist.pop();
+
+                    PycRef<ASTBlock> prev = curblock;
+                    blocks.pop();
+                    curblock = blocks.top();
+                    curblock->append(prev.cast<ASTNode>());
+
+                    bc_next(source, mod, opcode, operand, pos);
+                }
+            }
+            break;
         case Pyc::GET_AITER:
             {
                 // Logic similar to FOR_ITER_A
@@ -1121,8 +1145,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::ASYNC_GEN_WRAP:
         case Pyc::BEGIN_FINALLY:
         case Pyc::PUSH_EXC_INFO:
-        case Pyc::RERAISE:
-        case Pyc::RERAISE_A:
         case Pyc::ROT_N_A:
         case Pyc::RESERVE_FAST_A:
         case Pyc::RAISE_EXCEPTION:
