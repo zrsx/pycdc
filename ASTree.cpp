@@ -1036,6 +1036,89 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 stack.push(new ASTImport(new ASTName(code->getName(operand)), fromlist));
             }
             break;
+        case Pyc::CALL_KW_METHOD_A:
+        case Pyc::CALL_NO_KW_A:
+        case Pyc::CALL_NO_KW_METHOD_A: {
+            // For these, pop positional args, then function/method
+            ASTCall::pparam_t pparamList;
+            for (int i = 0; i < operand; ++i) {
+                pparamList.push_front(stack.top());
+                stack.pop();
+            }
+            PycRef<ASTNode> func = stack.top();
+            stack.pop();
+            stack.push(new ASTCall(func, pparamList, ASTCall::kwparam_t()));
+            break;
+        }
+        case Pyc::CALL_FINALLY_A:
+            // Used for exception/finally setup/teardown; no AST action needed.
+            break;
+        case Pyc::CALL_KW_A: {
+            // Top of stack is tuple of keyword names
+            PycRef<ASTNode> kw_names = stack.top();
+            stack.pop();
+
+            int kwparams = kw_names.cast<ASTObject>()->object().cast<PycTuple>()->size();
+            ASTCall::kwparam_t kwparamList;
+            std::vector<PycRef<PycObject>> keys = kw_names.cast<ASTObject>()->object().cast<PycTuple>()->values();
+            for (int i = 0; i < kwparams; i++) {
+                PycRef<ASTNode> value = stack.top();
+                stack.pop();
+                kwparamList.push_front(std::make_pair(new ASTObject(keys[kwparams - i - 1]), value));
+            }
+
+            // Now pop positional parameters
+            ASTCall::pparam_t pparamList;
+            for (int i = 0; i < (operand - kwparams); i++) {
+                pparamList.push_front(stack.top());
+                stack.pop();
+            }
+
+            PycRef<ASTNode> func = stack.top();
+            stack.pop();
+
+            stack.push(new ASTCall(func, pparamList, kwparamList));
+            break;
+}
+        case Pyc::CALL_INTRINSIC_1_A:
+        case Pyc::CALL_INTRINSIC_2_A: {
+            // Pop required arguments based on opcode
+            // You may want to define a new ASTIntrinsic node, or just treat as a call to a known function.
+            // For now, treat similar to ASTCall for simplicity:
+            int num_args = (opcode == Pyc::CALL_INTRINSIC_1_A) ? 1 : 2;
+            ASTCall::pparam_t pparams;
+            for (int i = 0; i < num_args; ++i) {
+                pparams.push_front(stack.top());
+                stack.pop();
+            }
+            // The function/intrinsic itself may be implicit, or you may want to create a named node.
+            // For now, use a placeholder:
+            PycRef<ASTNode> intrinsic = new ASTName(PycString::fromStd("INTRINSIC"));
+            stack.push(new ASTCall(intrinsic, pparams, ASTCall::kwparam_t()));
+            break;
+        }
+        case Pyc::CALL_FUNCTION_EX_A: {
+            PycRef<ASTNode> kwargs;
+            if (operand & 0x01) {
+                kwargs = stack.top();
+                stack.pop();
+            }
+            PycRef<ASTNode> args = stack.top();
+            stack.pop();
+            PycRef<ASTNode> func = stack.top();
+            stack.pop();
+
+            ASTCall::pparam_t pparams;
+            ASTCall::kwparam_t kwparams;
+
+            if (args)
+                pparams.push_back(new ASTStarred(args));
+            if (kwargs)
+                kwparams.push_back(std::make_pair(new ASTDoubleStarred(kwargs), nullptr));
+
+            stack.push(new ASTCall(func, pparams, kwparams));
+            break;
+        }
         case Pyc::IMPORT_FROM_A:
             stack.push(new ASTName(code->getName(operand)));
             break;
@@ -1084,14 +1167,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::ACCESS_MODE_A:
         case Pyc::BEFORE_ASYNC_WITH:
         case Pyc::BEFORE_WITH:
-        case Pyc::CALL_FUNCTION_EX_A:
-        case Pyc::CALL_INTRINSIC_1_A:
-        case Pyc::CALL_INTRINSIC_2_A:
-        case Pyc::CALL_KW_A:
-        case Pyc::CALL_FINALLY_A:
-        case Pyc::CALL_KW_METHOD_A:
-        case Pyc::CALL_NO_KW_A:
-        case Pyc::CALL_NO_KW_METHOD_A:
         case Pyc::COPY_DICT_WITHOUT_KEYS:
         case Pyc::CHECK_EG_MATCH:
         case Pyc::CHECK_EXC_MATCH:
