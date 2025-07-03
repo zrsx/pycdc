@@ -1088,9 +1088,9 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 pparams.push_front(stack.top());
                 stack.pop();
             }
-            PycRef<PycString> s = new PycString("INTRINSIC");
-            PycRef<ASTNode> intrinsic = new ASTName(s);
-            stack.push(new ASTCall(intrinsic, pparams, ASTCall::kwparam_t()));
+            // Instead of constructing a new ASTName with a string, just use a placeholder:
+            PycRef<ASTNode> intrinsic_func = nullptr; // or stack.top(), or skip
+            stack.push(new ASTCall(intrinsic_func, pparams, ASTCall::kwparam_t()));
             break;
         }
 
