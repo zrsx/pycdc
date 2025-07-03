@@ -1084,7 +1084,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::ACCESS_MODE_A:
         case Pyc::BEFORE_ASYNC_WITH:
         case Pyc::BEFORE_WITH:
-        case Pyc::BINARY_CALL:
         case Pyc::CALL_FUNCTION_EX_A:
         case Pyc::CALL_INTRINSIC_1_A:
         case Pyc::CALL_INTRINSIC_2_A:
