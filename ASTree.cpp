@@ -959,6 +959,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
         case Pyc::RERAISE:
         case Pyc::RERAISE_A:
+        case Pyc::RAISE_EXCEPTION:
             {
                 // RERAISE and RERAISE_A both mean "raise" with no arguments (re-raise the current exception)
                 ASTRaise::param_t paramList; // empty
@@ -1094,6 +1095,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
         }
 
+        case Pyc::INSTRUMENTED_CALL_FUNCTION_EX_A:
         case Pyc::CALL_FUNCTION_EX_A: {
             PycRef<ASTNode> kwargs;
             if (operand & 0x01) {
@@ -1185,12 +1187,10 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::LOAD_LOCAL_A:
         case Pyc::GET_AWAITABLE_A:
         case Pyc::GET_LEN:
-        case Pyc::INSTRUMENTED_CALL_FUNCTION_EX_A:
         case Pyc::INSTRUMENTED_CALL_KW_A:
         case Pyc::INSTRUMENTED_END_FOR_A:
         case Pyc::INSTRUMENTED_END_SEND_A:
         case Pyc::INSTRUMENTED_INSTRUCTION_A:
-        case Pyc::INSTRUMENTED_JUMP_BACKWARD_A:
         case Pyc::INSTRUMENTED_LINE_A:
         case Pyc::INSTRUMENTED_LOAD_SUPER_ATTR_A:
         case Pyc::INSTRUMENTED_POP_JUMP_IF_FALSE_A:
@@ -1237,7 +1237,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::PUSH_EXC_INFO:
         case Pyc::ROT_N_A:
         case Pyc::RESERVE_FAST_A:
-        case Pyc::RAISE_EXCEPTION:
         case Pyc::RETURN_GENERATOR:
         case Pyc::SEND_A:
         case Pyc::SET_ADD:
@@ -1376,6 +1375,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             }
             break;
         case Pyc::JUMP_BACKWARD_A:
+        case Pyc::INSTRUMENTED_JUMP_BACKWARD_A:
         case Pyc::JUMP_BACKWARD_NO_INTERRUPT_A:
         {
             int delta = operand;
