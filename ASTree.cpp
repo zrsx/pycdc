@@ -1046,6 +1046,30 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 curblock->append(new ASTStore(import, NULL));
             }
             break;
+        case Pyc::BUILD_LIST_UNPACK_A:
+        case Pyc::BUILD_SET_UNPACK_A:
+        case Pyc::BUILD_MAP_UNPACK_A:
+        case Pyc::BUILD_TUPLE_UNPACK_A:
+        case Pyc::BUILD_TUPLE_UNPACK_WITH_CALL_A:
+        case Pyc::BUILD_MAP_UNPACK_WITH_CALL_A:
+            {
+                // TODO: Implement starred/unpacking logic for these opcodes!
+                // For now, just pop and push a dummy node.
+                for (int i = 0; i < operand; ++i) {
+                    stack.pop();
+                }
+                stack.push(new ASTNode(ASTNode::NODE_INVALID)); // or some placeholder
+            }
+            break;
+        case Pyc::BINARY_CALL:
+            {
+                // TODO: Implement logic for BINARY_CALL
+                stack.pop(); // kwargs
+                stack.pop(); // args
+                stack.pop(); // func
+                stack.push(new ASTNode(ASTNode::NODE_INVALID));
+            }
+            break;
         case Pyc::IS_OP_A:
             {
                 PycRef<ASTNode> right = stack.top();
@@ -1060,12 +1084,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::ACCESS_MODE_A:
         case Pyc::BEFORE_ASYNC_WITH:
         case Pyc::BEFORE_WITH:
-        case Pyc::BUILD_LIST_UNPACK_A:
-        case Pyc::BUILD_MAP_UNPACK_A:
-        case Pyc::BUILD_SET_UNPACK_A:
-        case Pyc::BUILD_TUPLE_UNPACK_A:
-        case Pyc::BUILD_TUPLE_UNPACK_WITH_CALL_A:
-        case Pyc::BUILD_MAP_UNPACK_WITH_CALL_A:
         case Pyc::BINARY_CALL:
         case Pyc::CALL_FUNCTION_EX_A:
         case Pyc::CALL_INTRINSIC_1_A:
