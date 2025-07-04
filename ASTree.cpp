@@ -1081,7 +1081,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::FORMAT_SIMPLE: {
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTFormattedValue(val, false));
+            stack.push(new ASTFormattedValue(val, ASTFormattedValue::CONV_NONE, nullptr));
             break;
         }
         case Pyc::FORMAT_WITH_SPEC: {
@@ -1089,24 +1089,23 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             stack.pop();
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTFormattedValue(val, true, spec));
+            stack.push(new ASTFormattedValue(val, ASTFormattedValue::CONV_NONE, spec));
             break;
         }
         case Pyc::LOAD_GLOBALS: {
-            stack.push(new ASTGlobals());
+            stack.push(new ASTNode(ASTNode::NODE_INVALID));  // Placeholder, or skip
             break;
         }
         case Pyc::LOAD_LOCAL_A: {
-            std::string localName = code->getLocalName(operand); // Or use index if not available
-            stack.push(new ASTName(localName));
+            PycRef<PycObject> localObj = code->getLocal(operand);
+            PycRef<PycString> localNameStr = localObj.cast<PycString>();
+            stack.push(new ASTName(localNameStr));
             break;
         }
-        case Pyc::GET_AWAITABLE_A:
-            break;
         case Pyc::GET_LEN: {
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTCall(new ASTName("len"), {val}, {}));
+            stack.push(new ASTCall(new ASTName(new PycString("len")), {val}, {}));
             break;
         }
         case Pyc::IMPORT_NAME_A:
