@@ -1033,11 +1033,11 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
         case Pyc::GET_ANEXT:
             break;
-        case Pyc::FORMAT_SIMPLE: {
+                case Pyc::FORMAT_SIMPLE: {
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            // Use CONV_STR or your enum's value for "no conversion" (see your ASTNode.h)
-            stack.push(new ASTFormattedValue(val, ASTFormattedValue::CONV_STR, nullptr));
+            // Use 0 for "no conversion" if you don't have CONV_NONE/CONV_STR.
+            stack.push(new ASTFormattedValue(val, 0, nullptr));
             break;
         }
         case Pyc::FORMAT_WITH_SPEC: {
@@ -1045,28 +1045,29 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             stack.pop();
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTFormattedValue(val, ASTFormattedValue::CONV_STR, spec));
+            stack.push(new ASTFormattedValue(val, 0, spec));
             break;
         }
         case Pyc::LOAD_GLOBALS: {
-            // No ASTGlobals type, so use a placeholder node
-            stack.push(new ASTNode(ASTNode::NODE_INVALID));
+            stack.push(new ASTNode(ASTNode::NODE_INVALID)); // Placeholder, or skip if not needed
             break;
         }
         case Pyc::LOAD_LOCAL_A: {
+            // getLocal returns PycRef<PycObject>
             PycRef<PycObject> localObj = code->getLocal(operand);
             PycRef<PycString> localNameStr;
             if (localObj && localObj->type() == PycString::TYPE_STRING)
                 localNameStr = localObj.cast<PycString>();
             else
-                localNameStr = PycString::create("local");
+                localNameStr = new PycString("local", PycString::TYPE_STRING);
             stack.push(new ASTName(localNameStr));
             break;
         }
         case Pyc::GET_LEN: {
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTCall(new ASTName(PycString::create("len")), {val}, {}));
+            // Use new PycString("len", PycString::TYPE_STRING) for identifiers
+            stack.push(new ASTCall(new ASTName(new PycString("len", PycString::TYPE_STRING)), {val}, {}));
             break;
         }
         case Pyc::CALL_KW_METHOD_A:
