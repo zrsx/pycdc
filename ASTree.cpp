@@ -1034,43 +1034,42 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::GET_ANEXT:
             break;
         case Pyc::FORMAT_SIMPLE: {
-            PycRef<ASTNode> val = stack.top();
-            stack.pop();
-            // Safest: cast 0 to the enum type for "no conversion"
-            stack.push(new ASTFormattedValue(val, (ASTFormattedValue::ConversionFlag)0, nullptr));
-            break;
+                PycRef<ASTNode> val = stack.top();
+                stack.pop();
+                stack.push(new ASTFormattedValue(val, ASTFormattedValue::NONE, nullptr));
+                break;
         }
         case Pyc::FORMAT_WITH_SPEC: {
-            PycRef<ASTNode> spec = stack.top();
-            stack.pop();
-            PycRef<ASTNode> val = stack.top();
-            stack.pop();
-            stack.push(new ASTFormattedValue(val, (ASTFormattedValue::ConversionFlag)0, spec));
-            break;
+                PycRef<ASTNode> spec = stack.top();
+                stack.pop();
+                PycRef<ASTNode> val = stack.top();
+                stack.pop();
+                stack.push(new ASTFormattedValue(val, ASTFormattedValue::NONE, spec));
+                break;
         }
         case Pyc::LOAD_GLOBALS: {
-            stack.push(new ASTNode(ASTNode::NODE_INVALID)); // Placeholder
-            break;
+                stack.push(new ASTNode(ASTNode::NODE_INVALID));
+                break;
         }
         case Pyc::LOAD_LOCAL_A: {
-            PycRef<PycObject> localObj = code->getLocal(operand); // Correct type!
-            PycRef<PycString> localNameStr;
-            if (localObj && localObj->type() == PycString::TYPE_STRING) {
-                localNameStr = localObj.cast<PycString>();
-            } else {
-                localNameStr = new PycString();
-                localNameStr->setValue("local");
-            }
-            stack.push(new ASTName(localNameStr));
-            break;
+                PycRef<PycObject> localObj = code->getLocal(operand);
+                PycRef<PycString> localNameStr;
+                if (localObj && localObj->type() == PycString::TYPE_STRING) {
+                        localNameStr = localObj.cast<PycString>();
+                } else {
+                        localNameStr = new PycString();
+                        localNameStr->setValue("local");
+                }
+                stack.push(new ASTName(localNameStr));
+                break;
         }
         case Pyc::GET_LEN: {
-            PycRef<ASTNode> val = stack.top();
-            stack.pop();
-            PycRef<PycString> lenStr = new PycString();
-            lenStr->setValue("len");
-            stack.push(new ASTCall(new ASTName(lenStr), {val}, {}));
-            break;
+                PycRef<ASTNode> val = stack.top();
+                stack.pop();
+                PycRef<PycString> lenStr = new PycString();
+                lenStr->setValue("len");
+                stack.push(new ASTCall(new ASTName(lenStr), {val}, {}));
+                break;
         }
         case Pyc::CALL_KW_METHOD_A:
         case Pyc::CALL_NO_KW_A:
