@@ -224,48 +224,27 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             curblock->append(new ASTKeyword(ASTKeyword::KW_BREAK));
             break;
         case Pyc::ACCESS_MODE_A:
-            // Legacy (Python 1.x) file access mode check, no AST action needed.
             break;
-
         case Pyc::BEFORE_ASYNC_WITH:
         case Pyc::BEFORE_WITH:
-            // Python 3.11+: Prepares context manager for (async) with block, no AST action needed.
             break;
-
         case Pyc::DELETE_DEREF_A:
-            // Deletes a dereferenced variable (used in closures/freevars).
-            // No Python syntax equivalent; ignore in AST.
             break;
-
         case Pyc::DICT_MERGE_A:
         case Pyc::DICT_UPDATE_A:
-            // Merges or updates a dictionary (Python 3.9+).
-            // Implementation detail for unpacking, not needed in AST.
-            // Pop two dictionaries, push result if necessary for stack balance.
-            stack.pop(); // right dict
-            stack.pop(); // left dict
-            stack.push(new ASTNode(ASTNode::NODE_INVALID)); // Placeholder or adjust if you track dicts
+            stack.pop();
+            stack.pop();
+            stack.push(new ASTNode(ASTNode::NODE_INVALID));
             break;
-
         case Pyc::END_ASYNC_FOR:
-            // Marks the end of an async for loop; Python source-level for/async for block ends handled elsewhere.
             break;
-
         case Pyc::END_SEND:
-            // Marks the end of a send operation (async generators/coroutines).
-            // No Python source-level equivalent.
             break;
-
         case Pyc::ENTER_EXECUTOR_A:
-            // Python 3.13+: Used for subinterpreters/executors. No Python source-level equivalent.
             break;
-
         case Pyc::EXIT_INIT_CHECK:
-            // Python 3.13+: Used in __init__ method checking; not needed for AST/source.
             break;
-
         case Pyc::EXTENDED_ARG_A:
-            // Used to extend the argument of the following opcode; already handled in bc_next().
             break;
         case Pyc::BUILD_CLASS:
             {
@@ -1054,34 +1033,11 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
         case Pyc::GET_ANEXT:
             break;
-        case Pyc::FORMAT_VALUE_A:
-            {
-                auto conversion_flag = static_cast<ASTFormattedValue::ConversionFlag>(operand);
-                PycRef<ASTNode> format_spec = nullptr;
-                if (conversion_flag & ASTFormattedValue::HAVE_FMT_SPEC) {
-                    format_spec = stack.top();
-                    stack.pop();
-                }
-                auto val = stack.top();
-                stack.pop();
-                stack.push(new ASTFormattedValue(val, conversion_flag, format_spec));
-            }
-            break;
-        case Pyc::GET_AWAITABLE:
-            {
-                PycRef<ASTNode> object = stack.top();
-                stack.pop();
-                stack.push(new ASTAwaitable(object));
-            }
-            break;
-        case Pyc::GET_ITER:
-        case Pyc::GET_YIELD_FROM_ITER:
-            /* We just entirely ignore this */
-            break;
         case Pyc::FORMAT_SIMPLE: {
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTFormattedValue(val, ASTFormattedValue::CONV_NONE, nullptr));
+            // Use CONV_STR or your enum's value for "no conversion" (see your ASTNode.h)
+            stack.push(new ASTFormattedValue(val, ASTFormattedValue::CONV_STR, nullptr));
             break;
         }
         case Pyc::FORMAT_WITH_SPEC: {
@@ -1089,36 +1045,30 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             stack.pop();
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTFormattedValue(val, ASTFormattedValue::CONV_NONE, spec));
+            stack.push(new ASTFormattedValue(val, ASTFormattedValue::CONV_STR, spec));
             break;
         }
         case Pyc::LOAD_GLOBALS: {
-            stack.push(new ASTNode(ASTNode::NODE_INVALID));  // Placeholder, or skip
+            // No ASTGlobals type, so use a placeholder node
+            stack.push(new ASTNode(ASTNode::NODE_INVALID));
             break;
         }
         case Pyc::LOAD_LOCAL_A: {
             PycRef<PycObject> localObj = code->getLocal(operand);
-            PycRef<PycString> localNameStr = localObj.cast<PycString>();
+            PycRef<PycString> localNameStr;
+            if (localObj && localObj->type() == PycString::TYPE_STRING)
+                localNameStr = localObj.cast<PycString>();
+            else
+                localNameStr = PycString::create("local");
             stack.push(new ASTName(localNameStr));
             break;
         }
         case Pyc::GET_LEN: {
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTCall(new ASTName(new PycString("len")), {val}, {}));
+            stack.push(new ASTCall(new ASTName(PycString::create("len")), {val}, {}));
             break;
         }
-        case Pyc::IMPORT_NAME_A:
-            if (mod->majorVer() == 1) {
-                stack.push(new ASTImport(new ASTName(code->getName(operand)), NULL));
-            } else {
-                PycRef<ASTNode> fromlist = stack.top();
-                stack.pop();
-                if (mod->verCompare(2, 5) >= 0)
-                    stack.pop();    // Level -- we don't care
-                stack.push(new ASTImport(new ASTName(code->getName(operand)), fromlist));
-            }
-            break;
         case Pyc::CALL_KW_METHOD_A:
         case Pyc::CALL_NO_KW_A:
         case Pyc::CALL_NO_KW_METHOD_A: {
