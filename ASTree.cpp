@@ -223,29 +223,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::BREAK_LOOP:
             curblock->append(new ASTKeyword(ASTKeyword::KW_BREAK));
             break;
-        case Pyc::ACCESS_MODE_A:
-            break;
-        case Pyc::BEFORE_ASYNC_WITH:
-        case Pyc::BEFORE_WITH:
-            break;
-        case Pyc::DELETE_DEREF_A:
-            break;
-        case Pyc::DICT_MERGE_A:
-        case Pyc::DICT_UPDATE_A:
-            stack.pop();
-            stack.pop();
-            stack.push(new ASTNode(ASTNode::NODE_INVALID));
-            break;
-        case Pyc::END_ASYNC_FOR:
-            break;
-        case Pyc::END_SEND:
-            break;
-        case Pyc::ENTER_EXECUTOR_A:
-            break;
-        case Pyc::EXIT_INIT_CHECK:
-            break;
-        case Pyc::EXTENDED_ARG_A:
-            break;
         case Pyc::BUILD_CLASS:
             {
                 PycRef<ASTNode> class_code = stack.top();
@@ -545,35 +522,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
 
                 stack.push(new ASTCall(func, pparamList, kwparamList));
             }
-            break;
-        case Pyc::COPY_DICT_WITHOUT_KEYS: {
-            stack.pop(); // keys
-            PycRef<ASTNode> dict = stack.top();
-            stack.pop();
-            stack.push(dict);
-            break;
-        }
-        case Pyc::CHECK_EG_MATCH: {
-            stack.pop(); // type
-            stack.pop(); // exception group
-            stack.push(new ASTNode(ASTNode::NODE_INVALID));
-            break;
-        }
-        case Pyc::CHECK_EXC_MATCH: {
-            stack.pop(); // exception
-            stack.pop(); // type
-            stack.push(new ASTNode(ASTNode::NODE_INVALID));
-            break;
-        }
-        case Pyc::CLEANUP_THROW:
-            break;
-        case Pyc::CONVERT_VALUE_A: {
-            PycRef<ASTNode> val = stack.top();
-            stack.pop();
-            stack.push(new ASTConvert(val));
-            break;
-        }
-        case Pyc::COPY_FREE_VARS_A:
             break;
         case Pyc::CALL_FUNCTION_VAR_A:
             {
@@ -1033,41 +981,41 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
         case Pyc::GET_ANEXT:
             break;
-        case Pyc::FORMAT_SIMPLE: {
-                PycRef<ASTNode> val = stack.top();
-                stack.pop();
-                stack.push(new ASTFormattedValue(val, ASTFormattedValue::NONE, nullptr));
-                break;
-        }
-        case Pyc::FORMAT_WITH_SPEC: {
-                PycRef<ASTNode> spec = stack.top();
-                stack.pop();
-                PycRef<ASTNode> val = stack.top();
-                stack.pop();
-                stack.push(new ASTFormattedValue(val, ASTFormattedValue::NONE, spec));
-                break;
-        }
-        case Pyc::LOAD_GLOBALS: {
-                stack.push(new ASTNode(ASTNode::NODE_INVALID));
-                break;
-        }
-        case Pyc::LOAD_LOCAL_A: {
-                PycRef<PycString> localNameStr = code->getLocal(operand);
-                if (!localNameStr) {
-                        localNameStr = new PycString();
-                        localNameStr->setValue("local");
+        case Pyc::FORMAT_VALUE_A:
+            {
+                auto conversion_flag = static_cast<ASTFormattedValue::ConversionFlag>(operand);
+                PycRef<ASTNode> format_spec = nullptr;
+                if (conversion_flag & ASTFormattedValue::HAVE_FMT_SPEC) {
+                    format_spec = stack.top();
+                    stack.pop();
                 }
-                stack.push(new ASTName(localNameStr));
-                break;
-        }
-        case Pyc::GET_LEN: {
-                PycRef<ASTNode> val = stack.top();
+                auto val = stack.top();
                 stack.pop();
-                PycRef<PycString> lenStr = new PycString();
-                lenStr->setValue("len");
-                stack.push(new ASTCall(new ASTName(lenStr), {val}, {}));
-                break;
-        }
+                stack.push(new ASTFormattedValue(val, conversion_flag, format_spec));
+            }
+            break;
+        case Pyc::GET_AWAITABLE:
+            {
+                PycRef<ASTNode> object = stack.top();
+                stack.pop();
+                stack.push(new ASTAwaitable(object));
+            }
+            break;
+        case Pyc::GET_ITER:
+        case Pyc::GET_YIELD_FROM_ITER:
+            /* We just entirely ignore this */
+            break;
+        case Pyc::IMPORT_NAME_A:
+            if (mod->majorVer() == 1) {
+                stack.push(new ASTImport(new ASTName(code->getName(operand)), NULL));
+            } else {
+                PycRef<ASTNode> fromlist = stack.top();
+                stack.pop();
+                if (mod->verCompare(2, 5) >= 0)
+                    stack.pop();    // Level -- we don't care
+                stack.push(new ASTImport(new ASTName(code->getName(operand)), fromlist));
+            }
+            break;
         case Pyc::CALL_KW_METHOD_A:
         case Pyc::CALL_NO_KW_A:
         case Pyc::CALL_NO_KW_METHOD_A: {
@@ -1195,6 +1143,29 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             }
             break;
 
+        case Pyc::ACCESS_MODE_A:
+        case Pyc::BEFORE_ASYNC_WITH:
+        case Pyc::BEFORE_WITH:
+        case Pyc::COPY_DICT_WITHOUT_KEYS:
+        case Pyc::CHECK_EG_MATCH:
+        case Pyc::CHECK_EXC_MATCH:
+        case Pyc::CLEANUP_THROW:
+        case Pyc::CONVERT_VALUE_A:
+        case Pyc::COPY_FREE_VARS_A:
+        case Pyc::DELETE_DEREF_A:
+        case Pyc::DICT_MERGE_A:
+        case Pyc::DICT_UPDATE_A:
+        case Pyc::END_ASYNC_FOR:
+        case Pyc::END_SEND:
+        case Pyc::ENTER_EXECUTOR_A:
+        case Pyc::EXIT_INIT_CHECK:
+        case Pyc::EXTENDED_ARG_A:
+        case Pyc::FORMAT_SIMPLE:
+        case Pyc::FORMAT_WITH_SPEC:
+        case Pyc::LOAD_GLOBALS:
+        case Pyc::LOAD_LOCAL_A:
+        case Pyc::GET_AWAITABLE_A:
+        case Pyc::GET_LEN:
         case Pyc::INSTRUMENTED_CALL_KW_A:
         case Pyc::INSTRUMENTED_END_FOR_A:
         case Pyc::INSTRUMENTED_END_SEND_A:
