@@ -1052,11 +1052,8 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 break;
         }
         case Pyc::LOAD_LOCAL_A: {
-                PycRef<PycObject> localObj = code->getLocal(operand); // getLocal returns PycRef<PycObject>
-                PycRef<PycString> localNameStr;
-                if (localObj && localObj->type() == PycString::TYPE_STRING) {
-                        localNameStr = localObj.cast<PycString>();
-                } else {
+                PycRef<PycString> localNameStr = code->getLocal(operand);
+                if (!localNameStr) {
                         localNameStr = new PycString();
                         localNameStr->setValue("local");
                 }
