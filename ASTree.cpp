@@ -1078,58 +1078,47 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::GET_YIELD_FROM_ITER:
             /* We just entirely ignore this */
             break;
-        case Pyc::COPY_DICT_WITHOUT_KEYS: {
-            stack.pop(); // keys
-            PycRef<ASTNode> dict = stack.top();
-            stack.pop();
-            stack.push(dict);
-            break;
-        }
-        case Pyc::CHECK_EG_MATCH: {
-            stack.pop(); // type
-            stack.pop(); // exception group
-            stack.push(new ASTNode(ASTNode::NODE_INVALID));
-            break;
-        }
-        case Pyc::CHECK_EXC_MATCH: {
-            stack.pop(); // exception
-            stack.pop(); // type
-            stack.push(new ASTNode(ASTNode::NODE_INVALID));
-            break;
-        }
-        case Pyc::CLEANUP_THROW:
-            break;
-        case Pyc::CONVERT_VALUE_A: {
+        case Pyc::FORMAT_SIMPLE: {
             PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTConvert(val));
+            stack.push(new ASTFormattedValue(val, false));
             break;
         }
-        case Pyc::COPY_FREE_VARS_A:
-            break;
-
-        case Pyc::ACCESS_MODE_A:
-            break;
-        case Pyc::BEFORE_ASYNC_WITH:
-        case Pyc::BEFORE_WITH:
-            break;
-        case Pyc::DELETE_DEREF_A:
-            break;
-        case Pyc::DICT_MERGE_A:
-        case Pyc::DICT_UPDATE_A:
+        case Pyc::FORMAT_WITH_SPEC: {
+            PycRef<ASTNode> spec = stack.top();
             stack.pop();
+            PycRef<ASTNode> val = stack.top();
             stack.pop();
-            stack.push(new ASTNode(ASTNode::NODE_INVALID));
+            stack.push(new ASTFormattedValue(val, true, spec));
             break;
-        case Pyc::END_ASYNC_FOR:
+        }
+        case Pyc::LOAD_GLOBALS: {
+            stack.push(new ASTGlobals());
             break;
-        case Pyc::END_SEND:
+        }
+        case Pyc::LOAD_LOCAL_A: {
+            std::string localName = code->getLocalName(operand); // Or use index if not available
+            stack.push(new ASTName(localName));
             break;
-        case Pyc::ENTER_EXECUTOR_A:
+        }
+        case Pyc::GET_AWAITABLE_A:
             break;
-        case Pyc::EXIT_INIT_CHECK:
+        case Pyc::GET_LEN: {
+            PycRef<ASTNode> val = stack.top();
+            stack.pop();
+            stack.push(new ASTCall(new ASTName("len"), {val}, {}));
             break;
-        case Pyc::EXTENDED_ARG_A:
+        }
+        case Pyc::IMPORT_NAME_A:
+            if (mod->majorVer() == 1) {
+                stack.push(new ASTImport(new ASTName(code->getName(operand)), NULL));
+            } else {
+                PycRef<ASTNode> fromlist = stack.top();
+                stack.pop();
+                if (mod->verCompare(2, 5) >= 0)
+                    stack.pop();    // Level -- we don't care
+                stack.push(new ASTImport(new ASTName(code->getName(operand)), fromlist));
+            }
             break;
 
         case Pyc::FORMAT_SIMPLE: {
