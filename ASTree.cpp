@@ -1120,49 +1120,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 stack.push(new ASTImport(new ASTName(code->getName(operand)), fromlist));
             }
             break;
-
-        case Pyc::FORMAT_SIMPLE: {
-            PycRef<ASTNode> val = stack.top();
-            stack.pop();
-            stack.push(new ASTFormattedValue(val, false));
-            break;
-        }
-        case Pyc::FORMAT_WITH_SPEC: {
-            PycRef<ASTNode> spec = stack.top();
-            stack.pop();
-            PycRef<ASTNode> val = stack.top();
-            stack.pop();
-            stack.push(new ASTFormattedValue(val, true, spec));
-            break;
-        }
-        case Pyc::LOAD_GLOBALS: {
-            stack.push(new ASTGlobals());
-            break;
-        }
-        case Pyc::LOAD_LOCAL_A: {
-            std::string localName = code->getLocalName(operand); // Or use index if not available
-            stack.push(new ASTName(localName));
-            break;
-        }
-        case Pyc::GET_AWAITABLE_A:
-            break;
-        case Pyc::GET_LEN: {
-            PycRef<ASTNode> val = stack.top();
-            stack.pop();
-            stack.push(new ASTCall(new ASTName("len"), {val}, {}));
-            break;
-        }
-        case Pyc::IMPORT_NAME_A:
-            if (mod->majorVer() == 1) {
-                stack.push(new ASTImport(new ASTName(code->getName(operand)), NULL));
-            } else {
-                PycRef<ASTNode> fromlist = stack.top();
-                stack.pop();
-                if (mod->verCompare(2, 5) >= 0)
-                    stack.pop();    // Level -- we don't care
-                stack.push(new ASTImport(new ASTName(code->getName(operand)), fromlist));
-            }
-            break;
         case Pyc::CALL_KW_METHOD_A:
         case Pyc::CALL_NO_KW_A:
         case Pyc::CALL_NO_KW_METHOD_A: {
