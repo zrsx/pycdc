@@ -1144,8 +1144,15 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
 
         case Pyc::ACCESS_MODE_A:
+                //         Python 3.12+: Internal check for open() mode string, not user-visible.
+                //         No AST action required.
+                break;
+
         case Pyc::BEFORE_ASYNC_WITH:
         case Pyc::BEFORE_WITH:
+                //         Context manager setup for (async) with-statement, handled elsewhere.
+                //         No AST node or Python code emission here.
+                break;
         case Pyc::COPY_DICT_WITHOUT_KEYS:
         case Pyc::CHECK_EG_MATCH:
         case Pyc::CHECK_EXC_MATCH:
