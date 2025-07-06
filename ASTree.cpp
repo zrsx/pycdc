@@ -2214,6 +2214,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 stream->setProcessed();
             }
             break;
+
         case Pyc::RAISE_VARARGS_A:
             {
                 ASTRaise::param_t paramList;
@@ -2234,11 +2235,11 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                     blocks.pop();
                     curblock = blocks.top();
                     curblock->append(prev.cast<ASTNode>());
-
-                    bc_next(source, mod, opcode, operand, pos);
                 }
             }
             break;
+
+
         case Pyc::RETURN_VALUE:
         case Pyc::INSTRUMENTED_RETURN_VALUE_A:
             {
