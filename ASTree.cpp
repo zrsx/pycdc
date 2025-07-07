@@ -426,22 +426,8 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::CALL_FUNCTION_A:
         case Pyc::INSTRUMENTED_CALL_A:
             {
-                ASTCall::kwparam_t kwparamList;
-                ASTCall::pparam_t pparamList;
-                int kwparams, pparams;
-
-                // GH-107788 - Py 3.13 simplifies CALL instruction handling
-                // TODO : Test & validate CALL handling for classes & methods
-                if (mod->verCompare(3, 13) >= 0 && 
-                    ((opcode == Pyc::CALL_A) || (opcode == Pyc::INSTRUMENTED_CALL_A))) {
-                    pparams = operand;
-                    kwparams = 0;
-                }
-                else {
-                    kwparams = (operand & 0xFF00) >> 8;
-                    pparams = (operand & 0xFF);
-                }
-
+                int kwparams = (operand & 0xFF00) >> 8;
+                int pparams = (operand & 0xFF);
                 ASTCall::kwparam_t kwparamList;
                 ASTCall::pparam_t pparamList;
 
@@ -507,7 +493,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                         kwparamList.push_front(std::make_pair(key, val));
                     }
                 }
-                // Process positional parameters
                 for (int i=0; i<pparams; i++) {
                     PycRef<ASTNode> param = stack.top();
                     stack.pop();
@@ -528,27 +513,14 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                         pparamList.push_front(param);
                     }
                 }
-
-                PycRef<ASTNode> func;
-
-                if (mod->verCompare(3, 13) >= 0) {
-                    PycRef<ASTNode> self_or_null = stack.top();
-                    stack.pop();
-                
-                    func = stack.top();
+                PycRef<ASTNode> func = stack.top();
+                stack.pop();
+                if ((opcode == Pyc::CALL_A || opcode == Pyc::INSTRUMENTED_CALL_A) &&
+                        stack.top() == nullptr) {
                     stack.pop();
                 }
-                else {
-                    func = stack.top();
-                    stack.pop();
-                    if ((opcode == Pyc::CALL_A || opcode == Pyc::INSTRUMENTED_CALL_A) &&
-                            stack.top() == nullptr) {
-                        stack.pop();
-                    }
-                }
 
-                PycRef<ASTNode> node = new ASTCall(func, pparamList, kwparamList);
-                stack.push(node);
+                stack.push(new ASTCall(func, pparamList, kwparamList));
             }
             break;
         case Pyc::CALL_FUNCTION_VAR_A:
@@ -3877,21 +3849,6 @@ void print_src(PycRef<ASTNode> node, PycModule* mod, std::ostream& pyc_output)
             //pyc_output << ")";
         }
         break;
-    default:
-        pyc_output << "<NODE:" << node->type() << ">";
-        if (allow_unsupported) {
-            break;
-        }
-        else {
-            fprintf(stderr, "Unsupported Node type: %d\n", node->type());
-            cleanBuild = false;
-            return;
-        }
-    }
-
-    cleanBuild = true;
-}
-
     default:
         pyc_output << "<NODE:" << node->type() << ">";
         fprintf(stderr, "Unsupported Node type: %d\n", node->type());
