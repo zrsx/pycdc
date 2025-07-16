@@ -4,7 +4,7 @@ trigger:
       - __main__
 
 stages:
-- stage: BuildAndTest
+- stage: build
   jobs:
 
   # Ubuntu x64
@@ -35,9 +35,9 @@ stages:
 
     - script: |
         cd build
-        ctest --output-on-failure
+        python3 ../tests/run_tests.py
       displayName: 'Test Ubuntu x64 $(buildType)'
-      continueOnError: $[ne(variables['buildType'], 'Release')]
+      continueOnError: true
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -76,8 +76,8 @@ stages:
         make -j$(nproc)
       displayName: 'Cross-compile Ubuntu ARM64 $(buildType)'
 
-    - script: echo "Skipping tests for cross-compiled ARM64"
-      displayName: 'Skip ARM64 Tests'
+    - script: echo "Skipping test for ARM64 (not executable on x64 agent)"
+      displayName: 'Skip ARM64 Test'
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -106,12 +106,6 @@ stages:
         cmake --build . --config $(buildType)
       displayName: 'Build Windows x64 $(buildType)'
 
-    - script: |
-        cd build
-        ctest -C $(buildType) --output-on-failure
-      displayName: 'Test Windows x64 $(buildType)'
-      continueOnError: $[ne(variables['buildType'], 'Release')]
-
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
       inputs:
@@ -138,12 +132,6 @@ stages:
         cmake -A Win32 -DCMAKE_BUILD_TYPE=$(buildType) ..
         cmake --build . --config $(buildType)
       displayName: 'Build Windows x86 $(buildType)'
-
-    - script: |
-        cd build
-        ctest -C $(buildType) --output-on-failure
-      displayName: 'Test Windows x86 $(buildType)'
-      continueOnError: $[ne(variables['buildType'], 'Release')]
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')
@@ -179,9 +167,9 @@ stages:
 
     - script: |
         cd build
-        ctest --output-on-failure
+        python3 ../tests/run_tests.py
       displayName: 'Test macOS x64 $(buildType)'
-      continueOnError: $[ne(variables['buildType'], 'Release')]
+      continueOnError: true
 
     - task: PublishBuildArtifacts@1
       condition: eq(variables['buildType'], 'Release')

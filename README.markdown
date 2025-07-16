@@ -9,6 +9,10 @@
 [![GitHub Forks](https://img.shields.io/github/forks/zrsx/pycdc?style=social)](https://github.com/zrsx/pycdc/network)
 [![MSVC-CI](https://github.com/zrsx/pycdc/actions/workflows/msvc-ci.yml/badge.svg)](https://github.com/zrsx/pycdc/actions/workflows/msvc-ci.yml)
 [![Linux-CI](https://github.com/zrsx/pycdc/actions/workflows/linux-ci.yml/badge.svg)](https://github.com/zrsx/pycdc/actions/workflows/linux-ci.yml)
+[![Build Status](https://dev.azure.com/MichaelixNe/Neuro/_apis/build/status%2Fzrsx.pycdc?branchName=__main__)](https://dev.azure.com/MichaelixNe/Neuro/_build/latest?definitionId=1&branchName=__main__)
+[![CircleCI Build](https://dl.circleci.com/status-badge/img/circleci/BcpbSeUMcJTaQLHYBBWuxG/UdZ4oBjzxJEuVwKKgSVwf4/tree/__main__.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/circleci/BcpbSeUMcJTaQLHYBBWuxG/UdZ4oBjzxJEuVwKKgSVwf4/tree/__main__)
+
+
 
 **Issues:**
 [![Open Issues](https://img.shields.io/github/issues/zrsx/pycdc)](https://github.com/zrsx/pycdc/issues)

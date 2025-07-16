@@ -1,0 +1,56 @@
+version: 2.1
+
+executors:
+  linux:
+    docker:
+      - image: cimg/base:stable
+    environment:
+      CCACHE_DIR: /tmp/ccache
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+jobs:
+  build:
+    parameters:
+      build_type:
+        type: string
+        default: "Release"
+    executor: linux
+    steps:
+      - checkout
+
+      - run:
+          name: Install dependencies
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y cmake g++ ccache python3 python3-pip
+            export PATH="/usr/lib/ccache:$PATH"
+
+      - run:
+          name: Configure and Build (<< parameters.build_type >>)
+          command: |
+            mkdir build
+            cd build
+            cmake -DCMAKE_BUILD_TYPE=<< parameters.build_type >> \
+                  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            make -j$(nproc)
+
+      - run:
+          name: Run tests
+          command: |
+            cd build
+            python3 ../tests/run_tests.py
+          when: always
+
+      - store_artifacts:
+          path: build
+          destination: build_<< parameters.build_type >>
+
+workflows:
+  build-and-test:
+    jobs:
+      - build:
+          name: build-debug
+          build_type: Debug
+      - build:
+          name: build-release
+          build_type: Release
