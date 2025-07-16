@@ -523,4 +523,95 @@ void bc_disasm(std::ostream& pyc_output, PycRef<PycCode> code, PycModule* mod,
                     if (static_cast<size_t>(arg) < cmp_strings_len)
                         formatted_print(pyc_output, "%d (%s)", operand, cmp_strings[arg]);
                     else
-                        formatted_print(pyc_output, "%d (UNKNOWN)", oper
+                        formatted_print(pyc_output, "%d (UNKNOWN)", operand);
+                }
+                break;
+            case Pyc::BINARY_OP_A:
+                if (static_cast<size_t>(operand) < binop_strings_len)
+                    formatted_print(pyc_output, "%d (%s)", operand, binop_strings[operand]);
+                else
+                    formatted_print(pyc_output, "%d (UNKNOWN)", operand);
+                break;
+            case Pyc::IS_OP_A:
+                formatted_print(pyc_output, "%d (%s)", operand, (operand == 0) ? "is"
+                                                      : (operand == 1) ? "is not"
+                                                      : "UNKNOWN");
+                break;
+            case Pyc::CONTAINS_OP_A:
+                formatted_print(pyc_output, "%d (%s)", operand, (operand == 0) ? "in"
+                                                      : (operand == 1) ? "not in"
+                                                      : "UNKNOWN");
+                break;
+            case Pyc::CALL_INTRINSIC_1_A:
+                if (static_cast<size_t>(operand) < intrinsic1_names_len)
+                    formatted_print(pyc_output, "%d (%s)", operand, intrinsic1_names[operand]);
+                else
+                    formatted_print(pyc_output, "%d (UNKNOWN)", operand);
+                break;
+            case Pyc::CALL_INTRINSIC_2_A:
+                if (static_cast<size_t>(operand) < intrinsic2_names_len)
+                    formatted_print(pyc_output, "%d (%s)", operand, intrinsic2_names[operand]);
+                else
+                    formatted_print(pyc_output, "%d (UNKNOWN)", operand);
+                break;
+            case Pyc::FORMAT_VALUE_A:
+                {
+                    auto conv = static_cast<size_t>(operand & 0x03);
+                    const char *flag = (operand & 0x04) ? " | FVS_HAVE_SPEC" : "";
+                    if (conv < format_value_names_len) {
+                        formatted_print(pyc_output, "%d (%s%s)", operand,
+                                        format_value_names[conv], flag);
+                    } else {
+                        formatted_print(pyc_output, "%d (UNKNOWN)", operand);
+                    }
+                }
+                break;
+            case Pyc::CONVERT_VALUE_A:
+                if (static_cast<size_t>(operand) < format_value_names_len)
+                    formatted_print(pyc_output, "%d (%s)", operand, format_value_names[operand]);
+                else
+                    formatted_print(pyc_output, "%d (UNKNOWN)", operand);
+                break;
+            case Pyc::SET_FUNCTION_ATTRIBUTE_A:
+                // This looks like a bitmask, but CPython treats it as an exclusive lookup...
+                switch (operand) {
+                case 0x01:
+                    formatted_print(pyc_output, "%d (MAKE_FUNCTION_DEFAULTS)", operand);
+                    break;
+                case 0x02:
+                    formatted_print(pyc_output, "%d (MAKE_FUNCTION_KWDEFAULTS)", operand);
+                    break;
+                case 0x04:
+                    formatted_print(pyc_output, "%d (MAKE_FUNCTION_ANNOTATIONS)", operand);
+                    break;
+                case 0x08:
+                    formatted_print(pyc_output, "%d (MAKE_FUNCTION_CLOSURE)", operand);
+                    break;
+                default:
+                    formatted_print(pyc_output, "%d (UNKNOWN)", operand);
+                    break;
+                }
+                break;
+            default:
+                formatted_print(pyc_output, "%d", operand);
+                break;
+            }
+        }
+        pyc_output << "\n";
+    }
+}
+
+void bc_exceptiontable(std::ostream& pyc_output, PycRef<PycCode> code,
+               int indent)
+{
+    for (auto tuple: code->exceptTableEntries()) {
+
+        for (int i=0; i<indent; i++)
+            pyc_output << "    ";
+
+        pyc_output << std::get<0>(tuple) << " to " << std::get<1>(tuple);
+        pyc_output << " -> " << std::get<2>(tuple) << " ";
+        pyc_output << "[" << std::get<3>(tuple) << "] " << (std::get<4>(tuple) ? "lasti": "");
+        pyc_output << "\n";
+    }
+}
