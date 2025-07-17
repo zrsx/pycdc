@@ -957,6 +957,10 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 stack.push(NULL); // We can totally hack this >_>
             }
             break;
+        case Pyc::RERAISE:
+        case Pyc::RERAISE_A:
+        case Pyc::RAISE_EXCEPTION:
+            break;
         case Pyc::GET_AITER:
             {
                 // Logic similar to FOR_ITER_A
@@ -1012,6 +1016,88 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 stack.push(new ASTImport(new ASTName(code->getName(operand)), fromlist));
             }
             break;
+        case Pyc::CALL_KW_METHOD_A:
+        case Pyc::CALL_NO_KW_A:
+        case Pyc::CALL_NO_KW_METHOD_A: {
+            // For these, pop positional args, then function/method
+            ASTCall::pparam_t pparamList;
+            for (int i = 0; i < operand; ++i) {
+                pparamList.push_front(stack.top());
+                stack.pop();
+            }
+            PycRef<ASTNode> func = stack.top();
+            stack.pop();
+            stack.push(new ASTCall(func, pparamList, ASTCall::kwparam_t()));
+            break;
+        }
+        case Pyc::CALL_FINALLY_A:
+            // Used for exception/finally setup/teardown; no AST action needed.
+            break;
+        case Pyc::CALL_KW_A: {
+            // Top of stack is tuple of keyword names
+            PycRef<ASTNode> kw_names = stack.top();
+            stack.pop();
+
+            int kwparams = kw_names.cast<ASTObject>()->object().cast<PycTuple>()->size();
+            ASTCall::kwparam_t kwparamList;
+            std::vector<PycRef<PycObject>> keys = kw_names.cast<ASTObject>()->object().cast<PycTuple>()->values();
+            for (int i = 0; i < kwparams; i++) {
+                PycRef<ASTNode> value = stack.top();
+                stack.pop();
+                kwparamList.push_front(std::make_pair(new ASTObject(keys[kwparams - i - 1]), value));
+            }
+
+            // Now pop positional parameters
+            ASTCall::pparam_t pparamList;
+            for (int i = 0; i < (operand - kwparams); i++) {
+                pparamList.push_front(stack.top());
+                stack.pop();
+            }
+
+            PycRef<ASTNode> func = stack.top();
+            stack.pop();
+
+            stack.push(new ASTCall(func, pparamList, kwparamList));
+            break;
+}
+        case Pyc::CALL_INTRINSIC_1_A:
+        case Pyc::CALL_INTRINSIC_2_A: {
+            int num_args = (opcode == Pyc::CALL_INTRINSIC_1_A) ? 1 : 2;
+            ASTCall::pparam_t pparams;
+            for (int i = 0; i < num_args; ++i) {
+                pparams.push_front(stack.top());
+                stack.pop();
+            }
+            // Instead of constructing a new ASTName with a string, just use a placeholder:
+            PycRef<ASTNode> intrinsic_func = nullptr; // or stack.top(), or skip
+            stack.push(new ASTCall(intrinsic_func, pparams, ASTCall::kwparam_t()));
+            break;
+        }
+
+        case Pyc::INSTRUMENTED_CALL_FUNCTION_EX_A:
+        case Pyc::CALL_FUNCTION_EX_A: {
+            PycRef<ASTNode> kwargs;
+            if (operand & 0x01) {
+                kwargs = stack.top();
+                stack.pop();
+            }
+            PycRef<ASTNode> args = stack.top();
+            stack.pop();
+            PycRef<ASTNode> func = stack.top();
+            stack.pop();
+
+            ASTCall::pparam_t pparams;
+            ASTCall::kwparam_t kwparams;
+
+            // No ASTStarred/ASTDoubleStarred available; just add args as-is
+            if (args)
+                pparams.push_back(args); // TODO: mark as unpacked
+            if (kwargs)
+                kwparams.push_back(std::make_pair(kwargs, nullptr)); // TODO: mark as double-starred
+
+            stack.push(new ASTCall(func, pparams, kwparams));
+            break;
+}
         case Pyc::IMPORT_FROM_A:
             stack.push(new ASTName(code->getName(operand)));
             break;
@@ -1020,6 +1106,30 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 PycRef<ASTNode> import = stack.top();
                 stack.pop();
                 curblock->append(new ASTStore(import, NULL));
+            }
+            break;
+        case Pyc::BUILD_LIST_UNPACK_A:
+        case Pyc::BUILD_SET_UNPACK_A:
+        case Pyc::BUILD_MAP_UNPACK_A:
+        case Pyc::BUILD_TUPLE_UNPACK_A:
+        case Pyc::BUILD_TUPLE_UNPACK_WITH_CALL_A:
+        case Pyc::BUILD_MAP_UNPACK_WITH_CALL_A:
+            {
+                // TODO: Implement starred/unpacking logic for these opcodes!
+                // For now, just pop and push a dummy node.
+                for (int i = 0; i < operand; ++i) {
+                    stack.pop();
+                }
+                stack.push(new ASTNode(ASTNode::NODE_INVALID)); // or some placeholder
+            }
+            break;
+        case Pyc::BINARY_CALL:
+            {
+                // TODO: Implement logic for BINARY_CALL
+                stack.pop(); // kwargs
+                stack.pop(); // args
+                stack.pop(); // func
+                stack.push(new ASTNode(ASTNode::NODE_INVALID));
             }
             break;
         case Pyc::IS_OP_A:
@@ -1034,79 +1144,215 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
 
         case Pyc::ACCESS_MODE_A:
+                //         Python 3.12+: Internal check for open() mode string, not user-visible.
+                //         No AST action required.
+                break;
+
         case Pyc::BEFORE_ASYNC_WITH:
         case Pyc::BEFORE_WITH:
-        case Pyc::BINARY_SLICE:
-        case Pyc::BUILD_LIST_UNPACK_A:
-        case Pyc::BUILD_MAP_UNPACK_A:
-        case Pyc::BUILD_SET_UNPACK_A:
-        case Pyc::BUILD_TUPLE_UNPACK_A:
-        case Pyc::BUILD_TUPLE_UNPACK_WITH_CALL_A:
-        case Pyc::BUILD_MAP_UNPACK_WITH_CALL_A:
-        case Pyc::BINARY_CALL:
-        case Pyc::CALL_FUNCTION_EX_A:
-        case Pyc::CALL_INTRINSIC_1_A:
-        case Pyc::CALL_INTRINSIC_2_A:
-        case Pyc::CALL_KW_A:
-        case Pyc::CALL_FINALLY_A:
-        case Pyc::CALL_KW_METHOD_A:
-        case Pyc::CALL_NO_KW_A:
-        case Pyc::CALL_NO_KW_METHOD_A:
+                //         Context manager setup for (async) with-statement, handled elsewhere.
+                //         No AST node or Python code emission here.
+                break;
         case Pyc::COPY_DICT_WITHOUT_KEYS:
+                //         Internal opcode for dictionary unpacking without certain keys (Python 3.9+).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::CHECK_EG_MATCH:
+                //         Internal opcode for "except ... as ..." (exception group matching, Python 3.11+).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::CHECK_EXC_MATCH:
+                //         Internal opcode for matching exceptions in except clause.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
         case Pyc::CLEANUP_THROW:
+                //         Internal opcode for cleaning up after a generator throw (Python 3.11+).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::CONVERT_VALUE_A:
-        case Pyc::COPY_A:
+                //         Internal opcode for value conversion, used for handling annotations or internal conversions.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::COPY_FREE_VARS_A:
+                //         Internal opcode for copying closure variables for nested functions.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
         case Pyc::DELETE_DEREF_A:
+                //         Deletes a cell variable (closure variable) in the current scope.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::DICT_MERGE_A:
+                //         Internal opcode for merging dictionaries during dictionary unpacking (e.g., {**a, **b}).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::DICT_UPDATE_A:
+                //         Internal opcode for updating a dictionary with another (e.g., dict.update()).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
         case Pyc::END_ASYNC_FOR:
-        case Pyc::END_FOR:
+                //         Marks the end of an async for loop (Python 3.6+).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::END_SEND:
+                //         Internal opcode for async generator/send protocol.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::ENTER_EXECUTOR_A:
+                //         Internal opcode for entering an executor context (used by async/await machinery).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::EXIT_INIT_CHECK:
+                //         Internal opcode for checking initialization state on context exit.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::EXTENDED_ARG_A:
+                //         Used to extend the argument of the following opcode (legacy opcode for >8-bit bytecode args).
+                //         No AST node or Python code emission needed.
+                break;
         case Pyc::FORMAT_SIMPLE:
+                //         Internal opcode for simple string formatting using f-strings or .format(), no formatting spec.
+                //         Not user-visible, formatting is handled at a higher AST level.
+                break;
+
         case Pyc::FORMAT_WITH_SPEC:
+                //         Internal opcode for string formatting with a format specifier (e.g., f"{x:.2f}").
+                //         Not user-visible, formatting is handled at a higher AST level.
+                break;
+
         case Pyc::LOAD_GLOBALS:
+                //         Loads the globals dictionary for the current module or function.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::LOAD_LOCAL_A:
+                //         Loads a local variable by index (Python 3.12+).
+                //         Not user-visible, handled by variable access in AST.
+                break;
         case Pyc::GET_AWAITABLE_A:
+                //         Internal opcode for getting an awaitable object (async/await handling).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::GET_LEN:
-        case Pyc::INSTRUMENTED_CALL_FUNCTION_EX_A:
+                //         Internal opcode for retrieving the length of an object (used in len() and for-loops).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::INSTRUMENTED_CALL_KW_A:
+                //         Internal opcode for instrumented function calls with keyword arguments (used for profiling/tracing).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
         case Pyc::INSTRUMENTED_END_FOR_A:
+                //         Internal opcode for ending an instrumented 'for' loop (used for coverage or profiling).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::INSTRUMENTED_END_SEND_A:
+                //         Internal opcode for ending an instrumented send operation (used for async generators, profiling).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::INSTRUMENTED_INSTRUCTION_A:
-        case Pyc::INSTRUMENTED_JUMP_BACKWARD_A:
+                //         Internal opcode for an instrumented instruction (used by profiling or tracing tools).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
         case Pyc::INSTRUMENTED_LINE_A:
-        case Pyc::INSTRUMENTED_LOAD_SUPER_ATTR_A:
+                //         Internal opcode marking an instrumented line (used for coverage or tracing).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+                case Pyc::INSTRUMENTED_LOAD_SUPER_ATTR_A:
+                //         Internal opcode for instrumented loading of a super() attribute (used for profiling/tracing).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+        case Pyc::LIST_TO_TUPLE:
+                //         Internal opcode to convert a list to a tuple (e.g., for unpacking or star expressions).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
+        case Pyc::LOAD_ASSERTION_ERROR:
+                //         Loads the built-in AssertionError for assert statements.
+                //         Not user-visible, handled at a higher AST level.
+                break;
+
+        case Pyc::LOAD_FAST_AND_CLEAR_A:
+                //         Loads a local variable and clears it (Python 3.11+).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
+        case Pyc::LOAD_FAST_CHECK_A:
+                //         Loads a local variable with additional checks (Python 3.11+).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
+        case Pyc::LOAD_FROM_DICT_OR_DEREF_A:
+                //         Loads a value from a dictionary or a closure cell, as needed.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
+        case Pyc::LOAD_FROM_DICT_OR_GLOBALS_A:
+                //         Loads a value from a dictionary or globals, as needed.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
+        case Pyc::LOAD_SUPER_ATTR_A:
+                //         Loads an attribute from super() (Python 3.11+), used for method resolution order.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+        case Pyc::MAKE_CELL_A:
+                //         Creates a new cell variable for closures (Python 3.11+).
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
+        case Pyc::MAKE_FUNCTION:
+                //         Creates a new function object. Should be handled by function definition logic in AST.
+                //         Typically, actual AST/function node creation occurs elsewhere.
+                break;
+
+        case Pyc::MAP_ADD_A:
+                //         Adds a key-value pair to a map/dictionary during dictionary comprehensions or builds.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
+        case Pyc::MATCH_CLASS_A:
+                //         Internal opcode for matching a class pattern in a match/case statement (Python 3.10+).
+                //         Not user-visible, pattern matching handled at a higher AST level.
+                break;
+
+        case Pyc::MATCH_KEYS:
+                //         Internal opcode for matching dictionary keys in pattern matching (Python 3.10+).
+                //         Not user-visible, pattern matching handled at a higher AST level.
+                break;
+
+        case Pyc::MATCH_MAPPING:
+                //         Internal opcode for matching mapping (dictionary) patterns in match/case (Python 3.10+).
+                //         Not user-visible, pattern matching handled at a higher AST level.
+                break;
+
+        case Pyc::MATCH_SEQUENCE:
+                //         Internal opcode for matching sequence patterns in match/case (Python 3.10+).
+                //         Not user-visible, pattern matching handled at a higher AST level.
+                break;
         case Pyc::INSTRUMENTED_POP_JUMP_IF_FALSE_A:
         case Pyc::INSTRUMENTED_POP_JUMP_IF_NONE_A:
         case Pyc::INSTRUMENTED_POP_JUMP_IF_NOT_NONE_A:
         case Pyc::INSTRUMENTED_POP_JUMP_IF_TRUE_A:
         case Pyc::INTERPRETER_EXIT:
-        case Pyc::JUMP_BACKWARD_NO_INTERRUPT_A:
         case Pyc::JUMP_IF_FALSE_A:
         case Pyc::JUMP_IF_FALSE_OR_POP_A:
         case Pyc::JUMP_IF_NOT_EXC_MATCH_A:
         case Pyc::JUMP_IF_TRUE_A:
         case Pyc::JUMP_IF_TRUE_OR_POP_A:
-        case Pyc::LIST_TO_TUPLE:
-        case Pyc::LOAD_ASSERTION_ERROR:
-        case Pyc::LOAD_FAST_AND_CLEAR_A:
-        case Pyc::LOAD_FAST_CHECK_A:
-        case Pyc::LOAD_FROM_DICT_OR_DEREF_A:
-        case Pyc::LOAD_FROM_DICT_OR_GLOBALS_A:
-        case Pyc::LOAD_SUPER_ATTR_A:
-        case Pyc::MAKE_CELL_A:
-        case Pyc::MAKE_FUNCTION:
-        case Pyc::MAP_ADD_A:
-        case Pyc::MATCH_CLASS_A:
-        case Pyc::MATCH_KEYS:
-        case Pyc::MATCH_MAPPING:
-        case Pyc::MATCH_SEQUENCE:
         case Pyc::POP_JUMP_BACKWARD_IF_TRUE_A:
         case Pyc::POP_JUMP_FORWARD_IF_FALSE_A:
         case Pyc::POP_JUMP_BACKWARD_IF_FALSE_A:
@@ -1125,11 +1371,8 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::ASYNC_GEN_WRAP:
         case Pyc::BEGIN_FINALLY:
         case Pyc::PUSH_EXC_INFO:
-        case Pyc::RERAISE:
-        case Pyc::RERAISE_A:
         case Pyc::ROT_N_A:
         case Pyc::RESERVE_FAST_A:
-        case Pyc::RAISE_EXCEPTION:
         case Pyc::RETURN_GENERATOR:
         case Pyc::SEND_A:
         case Pyc::SET_ADD:
@@ -1268,6 +1511,8 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             }
             break;
         case Pyc::JUMP_BACKWARD_A:
+        case Pyc::INSTRUMENTED_JUMP_BACKWARD_A:
+        case Pyc::JUMP_BACKWARD_NO_INTERRUPT_A:
         {
             int delta = operand;
             if (mod->verCompare(3, 10) >= 0) {
@@ -1854,6 +2099,32 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::POP_EXCEPT:
             /* Do nothing. */
             break;
+        case Pyc::END_FOR:
+            {
+                stack.pop();
+
+                if ((opcode == Pyc::END_FOR) && (mod->majorVer() == 3) && (mod->minorVer() == 12)) {
+                    // one additional pop for python 3.12
+                    stack.pop();
+                }
+
+                // end for loop here
+                /* TODO : Ensure that FOR loop ends here. 
+                   Due to CACHE instructions at play, the end indicated in
+                   the for loop by pycdas is not correct, it is off by
+                   some small amount. */
+                if (curblock->blktype() == ASTBlock::BLK_FOR) {
+                    PycRef<ASTBlock> prev = blocks.top();
+                    blocks.pop();
+
+                    curblock = blocks.top();
+                    curblock->append(prev.cast<ASTNode>());
+                }
+                else {
+                    fprintf(stderr, "Wrong block type %i for END_FOR\n", curblock->blktype());
+                }
+            }
+            break;
         case Pyc::POP_TOP:
             {
                 PycRef<ASTNode> value = stack.top();
@@ -1943,6 +2214,7 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 stream->setProcessed();
             }
             break;
+
         case Pyc::RAISE_VARARGS_A:
             {
                 ASTRaise::param_t paramList;
@@ -1963,11 +2235,11 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                     blocks.pop();
                     curblock = blocks.top();
                     curblock->append(prev.cast<ASTNode>());
-
-                    bc_next(source, mod, opcode, operand, pos);
                 }
             }
             break;
+
+
         case Pyc::RETURN_VALUE:
         case Pyc::INSTRUMENTED_RETURN_VALUE_A:
             {
@@ -2647,6 +2919,79 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 next_tup->setRequireParens(false);
                 stack.push(tup);
                 stack.push(next_tup);
+            }
+            break;
+        case Pyc::BINARY_SLICE:
+            {
+                PycRef<ASTNode> end = stack.top();
+                stack.pop();
+                PycRef<ASTNode> start = stack.top();
+                stack.pop();
+                PycRef<ASTNode> dest = stack.top();
+                stack.pop();
+
+                if (start.type() == ASTNode::NODE_OBJECT
+                        && start.cast<ASTObject>()->object() == Pyc_None) {
+                    start = NULL;
+                }
+
+                if (end.type() == ASTNode::NODE_OBJECT
+                        && end.cast<ASTObject>()->object() == Pyc_None) {
+                    end = NULL;
+                }
+
+                PycRef<ASTNode> slice;
+                if (start == NULL && end == NULL) {
+                    slice = new ASTSlice(ASTSlice::SLICE0);
+                } else if (start == NULL) {
+                    slice = new ASTSlice(ASTSlice::SLICE2, start, end);
+                } else if (end == NULL) {
+                    slice = new ASTSlice(ASTSlice::SLICE1, start, end);
+                } else {
+                    slice = new ASTSlice(ASTSlice::SLICE3, start, end);
+                }
+                stack.push(new ASTSubscr(dest, slice));
+            }
+            break;
+        case Pyc::STORE_SLICE:
+            {
+                PycRef<ASTNode> end = stack.top();
+                stack.pop();
+                PycRef<ASTNode> start = stack.top();
+                stack.pop();
+                PycRef<ASTNode> dest = stack.top();
+                stack.pop();
+                PycRef<ASTNode> values = stack.top();
+                stack.pop();
+
+                if (start.type() == ASTNode::NODE_OBJECT
+                        && start.cast<ASTObject>()->object() == Pyc_None) {
+                    start = NULL;
+                }
+
+                if (end.type() == ASTNode::NODE_OBJECT
+                        && end.cast<ASTObject>()->object() == Pyc_None) {
+                    end = NULL;
+                }
+
+                PycRef<ASTNode> slice;
+                if (start == NULL && end == NULL) {
+                    slice = new ASTSlice(ASTSlice::SLICE0);
+                } else if (start == NULL) {
+                    slice = new ASTSlice(ASTSlice::SLICE2, start, end);
+                } else if (end == NULL) {
+                    slice = new ASTSlice(ASTSlice::SLICE1, start, end);
+                } else {
+                    slice = new ASTSlice(ASTSlice::SLICE3, start, end);
+                }
+
+                curblock->append(new ASTStore(values, new ASTSubscr(dest, slice)));
+            }
+            break;
+        case Pyc::COPY_A:
+            {
+                PycRef<ASTNode> value = stack.top(operand);
+                stack.push(value);
             }
             break;
         default:

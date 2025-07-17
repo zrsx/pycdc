@@ -472,6 +472,10 @@ void bc_disasm(std::ostream& pyc_output, PycRef<PycCode> code, PycModule* mod,
             case Pyc::INSTRUMENTED_POP_JUMP_IF_FALSE_A:
             case Pyc::INSTRUMENTED_POP_JUMP_IF_TRUE_A:
                 {
+                    /* TODO: Fix offset based on CACHE instructions.
+                       Offset is relative to next non-CACHE instruction
+                       and thus will be printed lower than actual value.
+                       See TODO @ END_FOR ASTree.cpp */
                     int offs = operand;
                     if (mod->verCompare(3, 10) >= 0)
                         offs *= sizeof(uint16_t); // BPO-27129
@@ -593,6 +597,21 @@ void bc_disasm(std::ostream& pyc_output, PycRef<PycCode> code, PycModule* mod,
                 break;
             }
         }
+        pyc_output << "\n";
+    }
+}
+
+void bc_exceptiontable(std::ostream& pyc_output, PycRef<PycCode> code,
+               int indent)
+{
+    for (auto tuple: code->exceptTableEntries()) {
+
+        for (int i=0; i<indent; i++)
+            pyc_output << "    ";
+
+        pyc_output << std::get<0>(tuple) << " to " << std::get<1>(tuple);
+        pyc_output << " -> " << std::get<2>(tuple) << " ";
+        pyc_output << "[" << std::get<3>(tuple) << "] " << (std::get<4>(tuple) ? "lasti": "");
         pyc_output << "\n";
     }
 }
