@@ -1,10 +1,10 @@
 # **Decompyle++ (pycdc) — zrsx Fork**
 
-*A blazing-fast Python bytecode decompiler & disassembler for Python 2.7–3.13*
+*A blazing-fast Python bytecode decompiler & disassembler for Python 2.0–3.14*
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#)
 [![License](https://img.shields.io/github/license/zrsx/pycdc)](https://www.gnu.org/licenses/gpl-3.0.en.html)
-[![Python Versions](https://img.shields.io/badge/python-2.7--3.13-blue)](#)
+[![Python Versions](https://img.shields.io/badge/python-2.0--3.14-blue)](#)
 [![GitHub Stars](https://img.shields.io/github/stars/zrsx/pycdc?style=social)](https://github.com/zrsx/pycdc/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/zrsx/pycdc?style=social)](https://github.com/zrsx/pycdc/network)
 [![MSVC-CI](https://github.com/zrsx/pycdc/actions/workflows/msvc-ci.yml/badge.svg)](https://github.com/zrsx/pycdc/actions/workflows/msvc-ci.yml)
@@ -28,7 +28,7 @@
 
 **Decompyle++** is a fast, cross-version Python bytecode **decompiler** and **disassembler** written in C++. This fork by [**zrsx**](https://github.com/zrsx) extends the original [`pycdc`](https://github.com/zrax/pycdc) to support:
 
-* Python **2.7** through **3.13**
+* Python **2.0** through **3.14**
 * Newer opcode formats and edge cases
 * Marshalled code objects and `.pyc` files
 * High-speed native C++ processing
@@ -40,7 +40,7 @@
 * Decompiles `.pyc` files to readable Python source
 * Disassembles bytecode into opcode instructions
 * Works with marshalled code objects (e.g., `.marshalled`)
-* Supports Python versions **2.7 – 3.13**
+* Supports Python versions **2.0 – 3.14**
 * Fast, minimal, and standalone (no Python runtime needed)
 
 ---
@@ -99,7 +99,7 @@ make check
 ### Decompile Marshalled Code
 
 ```bash
-./pycdc -c -v 3.13 path/to/file.marshalled
+./pycdc -c -v 3.14 path/to/file.marshalled
 ```
 
 #### **Flags**
