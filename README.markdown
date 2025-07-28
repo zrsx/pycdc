@@ -1,6 +1,6 @@
 # **Decompyle++ (pycdc) — zrsx Fork**
 
-*A blazing-fast Python bytecode decompiler & disassembler for Python 2.7–3.13*
+*A blazing-fast Python bytecode decompiler & disassembler for Python 2.0–3.14*
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#)
 [![License](https://img.shields.io/github/license/zrsx/pycdc)](https://www.gnu.org/licenses/gpl-3.0.en.html)
