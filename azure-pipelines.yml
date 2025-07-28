@@ -1,7 +1,7 @@
 trigger:
   branches:
     include:
-      - __main__
+      - master
 
 stages:
 - stage: build
