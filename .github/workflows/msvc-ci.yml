@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Create Build Directory
         run: |
          if (Test-Path build) { Write-Host "Build dir exists" } else { mkdir build }
