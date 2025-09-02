@@ -122,7 +122,7 @@ stages:
         Release:
           buildType: Release
     pool:
-      vmImage: windows-latest
+      vmImage: windows-11
     steps:
     - checkout: self
 
