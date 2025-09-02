@@ -95,7 +95,7 @@ stages:
         Release:
           buildType: Release
     pool:
-      vmImage: windows-latest
+      vmImage: 'windows-2025'
     steps:
     - checkout: self
 
