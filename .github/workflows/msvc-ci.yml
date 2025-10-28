@@ -27,7 +27,7 @@ jobs:
       - name: Run Tests (Release)
         run: cmake --build build --config Release --target RUN_TESTS || cmake --build build --config Release --target check
       - name: Upload Release Executables
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: pycdc-release
           path: build\Release\*.exe
