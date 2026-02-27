@@ -30,7 +30,7 @@ jobs:
         run: cmake --build build-release --target check
 
       - name: Upload Release Executables
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: pycdc-release
           path: build-release/*
