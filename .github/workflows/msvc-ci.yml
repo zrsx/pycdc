@@ -16,16 +16,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-      - name: Create Build Directory
+      - name: Configure and Build
         run: |
-         if (Test-Path build) { Write-Host "Build dir exists" } else { mkdir build }
-        shell: pwsh
-      - name: Configure CMake
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A Win32
-      - name: Build Debug
-        run: cmake --build build --config Debug
-      - name: Build Release
-        run: cmake --build build --config Release
+          mkdir build
+          cd build
+          cmake -G "Visual Studio 17 2022" -A Win32 ..
+          cmake --build . --config Debug
+          cmake --build . --config Release
       - name: Run Tests (Debug)
         run: cmake --build build --config Debug --target RUN_TESTS || cmake --build build --config Debug --target check
       - name: Run Tests (Release)
