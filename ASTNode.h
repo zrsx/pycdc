@@ -578,9 +578,15 @@ public:
     PycRef<ASTNode> cond() const { return m_cond; }
     bool negative() const { return m_negative; }
 
+    /* For BLK_EXCEPT: the optional `as <name>` alias (Python 3.11+ zero-cost
+       exception reconstruction). */
+    PycRef<ASTNode> exceptAs() const { return m_exceptAs; }
+    void setExceptAs(PycRef<ASTNode> name) { m_exceptAs = std::move(name); }
+
 private:
     PycRef<ASTNode> m_cond;
     bool m_negative;
+    PycRef<ASTNode> m_exceptAs;
 };
 
 
@@ -717,13 +723,16 @@ class ASTJoinedStr : public ASTNode {
 public:
     typedef std::list<PycRef<ASTNode>> value_t;
 
-    ASTJoinedStr(value_t values)
-        : ASTNode(NODE_JOINEDSTR), m_values(std::move(values)) { }
+    ASTJoinedStr(value_t values, bool is_template = false)
+        : ASTNode(NODE_JOINEDSTR), m_values(std::move(values)),
+          m_template(is_template) { }
 
     const value_t& values() const { return m_values; }
+    bool isTemplate() const { return m_template; }
 
 private:
     value_t m_values;
+    bool m_template;
 };
 
 class ASTAnnotatedVar : public ASTNode {

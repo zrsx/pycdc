@@ -6,6 +6,7 @@
 #include "pyc_numeric.h"
 #include "bytecode.h"
 #include <map>
+#include <algorithm>
 // This must be a triple quote (''' or """), to handle interpolated string literals containing the opposite quote style.
 // E.g. f'''{"interpolated "123' literal"}'''    -> valid.
 // E.g. f"""{"interpolated "123' literal"}"""    -> valid.
@@ -72,6 +73,89 @@ static void CheckIfExpr(FastStack& stack, PycRef<ASTBlock> curblock)
     stack.push(new ASTTernary(std::move(if_block), std::move(if_expr), std::move(else_expr)));
 }
 
+/* --------------------------------------------------------------------------
+ * Python 3.11+ "zero-cost" exception support.
+ *
+ * Starting with 3.11, try/except/finally no longer emit SETUP_FINALLY /
+ * POP_BLOCK opcodes.  Instead the protected ranges live in a side-table
+ * (co_exceptiontable) and the handler code is laid out *after* the normal
+ * "fall through" continuation.  To rebuild the source we pre-scan that table
+ * and remember, for each user try, where its body begins/ends and where its
+ * handler (the except/finally clauses) lives.
+ *
+ * A table entry whose handler target starts with PUSH_EXC_INFO marks a real
+ * user "try" body.  Entries whose target starts with COPY/RERAISE are the
+ * compiler-generated cleanup shims that simply re-raise; we use those only to
+ * chain a handler back to the try that encloses it (so nested try/except can
+ * recover the outer try's true extent).
+ * ------------------------------------------------------------------------ */
+struct ExceptRegion {
+    int handler = -1;   // offset of the PUSH_EXC_INFO that begins the handler
+    int try_start = 0;  // first offset of the user-visible try body
+    int body_end = 0;   // offset where the protected body first stops (== start
+                        // of the "fall through" continuation)
+};
+
+// Decode the opcode byte at a given offset by walking from the start.
+static int opcode_at(PycRef<PycCode> code, PycModule* mod, int offset)
+{
+    PycBuffer buf(code->code()->value(), code->code()->length());
+    int op, arg, pos = 0;
+    while (!buf.atEof()) {
+        int start = pos;
+        bc_next(buf, mod, op, arg, pos);
+        if (start == offset)
+            return op;
+        if (start > offset)
+            break;
+    }
+    return Pyc::PYC_INVALID_OPCODE;
+}
+
+static std::vector<ExceptRegion> analyzeExceptRegions(PycRef<PycCode> code, PycModule* mod)
+{
+    std::vector<ExceptRegion> regions;
+    if (mod->verCompare(3, 11) < 0)
+        return regions;
+
+    auto entries = code->exceptTableEntries();
+    if (entries.empty())
+        return regions;
+
+    // Map every handler offset that begins a real user try (PUSH_EXC_INFO) to
+    // the extent of its directly-protected ranges.  try_start = min fragment
+    // start, body_end = min fragment end (the first offset where protection
+    // stops, i.e. where the fall-through continuation begins).
+    std::map<int, ExceptRegion> byHandler;
+    for (const auto& entry : entries) {
+        int start = std::get<0>(entry);
+        int end = std::get<1>(entry);
+        int target = std::get<2>(entry);
+        if (opcode_at(code, mod, target) != Pyc::PUSH_EXC_INFO)
+            continue;
+
+        auto it = byHandler.find(target);
+        if (it == byHandler.end()) {
+            ExceptRegion r;
+            r.handler = target;
+            r.try_start = start;
+            r.body_end = end;
+            byHandler[target] = r;
+        } else {
+            if (start < it->second.try_start)
+                it->second.try_start = start;
+            if (end < it->second.body_end)
+                it->second.body_end = end;
+        }
+    }
+
+    for (const auto& kv : byHandler)
+        regions.push_back(kv.second);
+
+    return regions;
+}
+
+
 PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
 {
     PycBuffer source(code->code()->value(), code->code()->length());
@@ -92,6 +176,53 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
     bool else_pop = false;
     bool need_try = false;
     bool variable_annotations = false;
+
+    /* Python 3.11+ zero-cost exception reconstruction (see analyzeExceptRegions).
+       We recognise try-body starts and handler starts by offset while walking
+       the linear byte stream, and rebuild try/except structure around them. */
+    std::vector<ExceptRegion> except_regions = analyzeExceptRegions(code, mod);
+    // Multiple tries can share a start offset (nested try/except).  Group them
+    // by start, and within a start open the *outermost* first — the outer try
+    // has the later handler offset (handlers are laid out after the body), so we
+    // order by descending handler.
+    std::map<int, std::vector<ExceptRegion>> zce_try_start;
+    std::map<int, ExceptRegion> zce_handler;     // handler offset  -> region
+    for (const auto& r : except_regions) {
+        zce_try_start[r.try_start].push_back(r);
+        zce_handler[r.handler] = r;
+    }
+    for (auto& kv : zce_try_start) {
+        std::sort(kv.second.begin(), kv.second.end(),
+                  [](const ExceptRegion& a, const ExceptRegion& b) {
+                      return a.handler > b.handler; // outermost (later handler) first
+                  });
+    }
+    const bool use_zce = mod->verCompare(3, 11) >= 0 && !except_regions.empty();
+    (void)use_zce;
+
+    /* Containers whose try body has been emitted and are now waiting for their
+       handler code (keyed by handler offset).  When we reach the handler we
+       reconstruct the except/finally clauses into the stored container. */
+    std::map<int, PycRef<ASTContainerBlock>> zce_pending;
+    struct ZceHandlerState {
+        int handler;
+        PycRef<ASTContainerBlock> container;
+        bool expect_as;
+        bool expect_check;
+        PycRef<PycString> as_name;
+    };
+    std::vector<ZceHandlerState> zce_handler_stack;
+    /* Handler offset currently being reconstructed (-1 == none). */
+    int zce_active_handler = -1;
+    PycRef<ASTContainerBlock> zce_active_container;
+    /* Set right after NOT_TAKEN inside a handler: the next STORE_FAST names the
+       `except ... as <name>` alias rather than a normal assignment. */
+    bool zce_expect_as = false;
+    /* Set after PUSH_EXC_INFO: next op is CHECK_EXC_MATCH (conditional) or POP_TOP (bare except:). */
+    bool zce_expect_check = false;
+    /* Name of the active `except ... as <name>` alias, so we can suppress the
+       compiler-generated `<name> = None; del <name>` cleanup at clause end. */
+    PycRef<PycString> zce_as_name;
 
     while (!source.atEof()) {
 #if defined(BLOCK_DEBUG) || defined(STACK_DEBUG)
@@ -156,6 +287,81 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 prev = curblock;
 
                 CheckIfExpr(stack, curblock);
+            }
+        }
+
+        /* Python 3.11+ zero-cost exceptions.  The byte stream is laid out as
+              [try body] [fall-through continuation] [handler(s)]
+           with the protected ranges recorded in co_exceptiontable.  We rebuild
+           the source shape in three offset-driven steps:
+
+             (1) at a try-body start: push a container + BLK_TRY;
+             (2) at the try-body end: close the try, link the container into the
+                 parent block (so the continuation that follows renders after
+                 it), and remember the container by its handler offset;
+             (3) at the handler offset: reopen that container and reconstruct
+                 the except/finally clauses into it. */
+        if (use_zce) {
+            // (2) End of protected body/bodies -> finish the try (innermost
+            //     first) and park its container for later handler filling.
+            while (curblock->blktype() == ASTBlock::BLK_TRY
+                    && curblock->end() <= curpos) {
+                PycRef<ASTBlock> tryblk = curblock;
+                blocks.pop();
+                PycRef<ASTBlock> container = blocks.top();
+                int hoffset = container.cast<ASTContainerBlock>()->except();
+                container->append(tryblk.cast<ASTNode>());
+                blocks.pop();
+                curblock = blocks.top();
+                curblock->append(container.cast<ASTNode>());
+
+                if (!stack_hist.empty()) {
+                    stack = stack_hist.top();
+                    stack_hist.pop();
+                }
+                zce_pending[hoffset] = container.cast<ASTContainerBlock>();
+            }
+
+            // (1) Start of protected body/bodies -> open a container + try for
+            //     each region beginning here (outermost first).
+            {
+                auto tsit = zce_try_start.find(curpos);
+                if (tsit != zce_try_start.end()) {
+                    for (const auto& region : tsit->second) {
+                        if (zce_pending.find(region.handler) != zce_pending.end())
+                            continue;
+                        PycRef<ASTContainerBlock> container =
+                                new ASTContainerBlock(0, region.handler);
+                        container->init();
+                        container->setExcept(region.handler);
+                        blocks.push(container.cast<ASTBlock>());
+                        curblock = blocks.top();
+
+                        stack_hist.push(stack);
+                        PycRef<ASTBlock> tryblock =
+                                new ASTBlock(ASTBlock::BLK_TRY, region.body_end, true);
+                        blocks.push(tryblock);
+                        curblock = blocks.top();
+                    }
+                }
+            }
+
+            // (3) Reached a handler -> reopen its container for except clauses.
+            auto hit = zce_pending.find(curpos);
+            if (hit != zce_pending.end()) {
+                if (zce_active_handler >= 0) {
+                    zce_handler_stack.push_back({zce_active_handler, zce_active_container,
+                            zce_expect_as, zce_expect_check, zce_as_name});
+                }
+                zce_active_handler = curpos;
+                zce_active_container = hit->second;
+                zce_pending.erase(hit);
+
+                /* Re-enter the container so the except/finally clauses we build
+                   land inside it (it is already linked into its parent). */
+                blocks.push(zce_active_container.cast<ASTBlock>());
+                curblock = blocks.top();
+                stack_hist.push(stack);
             }
         }
 
@@ -701,6 +907,13 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                     break;
                 }
 
+                /* Python 3.11+: suppress the implicit `del <name>` that clears an
+                   `except ... as <name>` alias at the end of its clause. */
+                if (zce_active_handler >= 0 && zce_as_name != NULL
+                        && name.cast<ASTName>()->name()->isEqual(zce_as_name->strValue())) {
+                    break;
+                }
+
                 curblock->append(new ASTDelete(name));
             }
             break;
@@ -960,6 +1173,47 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::RERAISE:
         case Pyc::RERAISE_A:
         case Pyc::RAISE_EXCEPTION:
+            /* Python 3.11+: within a zero-cost handler the trailing RERAISE marks
+               the point where no user except clause matched.  When we see it at
+               container level, the handler is complete: pop the container off the
+               block stack and deactivate handler reconstruction. */
+            if (zce_active_handler >= 0
+                    && curblock->blktype() == ASTBlock::BLK_CONTAINER
+                    && curblock == zce_active_container.cast<ASTBlock>()) {
+                /* In 3.11+ the compiler duplicates the code that follows the
+                   try/except (the "fall through" continuation) into the
+                   handler's exit path, right after POP_EXCEPT.  Because we walk
+                   the bytecode linearly, those duplicated statements leak into
+                   the container as non-block siblings of the try/except/finally
+                   sub-blocks.  A container only ever holds structural
+                   sub-blocks, so any trailing non-block node is such a leaked
+                   duplicate — drop it. */
+                while (curblock->size()
+                        && curblock->nodes().back().type() != ASTNode::NODE_BLOCK) {
+                    curblock->removeLast();
+                }
+                blocks.pop();
+                curblock = blocks.top();
+                if (!stack_hist.empty()) {
+                    stack = stack_hist.top();
+                    stack_hist.pop();
+                }
+                if (!zce_handler_stack.empty()) {
+                    ZceHandlerState parent = zce_handler_stack.back();
+                    zce_handler_stack.pop_back();
+                    zce_active_handler = parent.handler;
+                    zce_active_container = parent.container;
+                    zce_expect_as = parent.expect_as;
+                    zce_expect_check = parent.expect_check;
+                    zce_as_name = parent.as_name;
+                } else {
+                    zce_active_handler = -1;
+                    zce_active_container = nullptr;
+                    zce_expect_as = false;
+                    zce_expect_check = false;
+                    zce_as_name = nullptr;
+                }
+            }
             break;
         case Pyc::GET_AITER:
             {
@@ -1163,9 +1417,31 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 //         Not user-visible, no AST node or Python code emission needed.
                 break;
 
+        case Pyc::PUSH_EXC_INFO:
+                /* Python 3.11+: marks the very start of a handler.  Push a
+                   placeholder for the current exception so CHECK_EXC_MATCH has a
+                   left operand, and open the first (typed-or-bare) except block
+                   inside the active container.  When there are multiple except
+                   clauses each subsequent one re-enters here. */
+                if (zce_active_handler >= 0) {
+                    stack.push(new ASTName(new PycString));
+                    zce_expect_check = true;  // Next: CHECK_EXC_MATCH or POP_TOP (bare except)
+                }
+                break;
+
         case Pyc::CHECK_EXC_MATCH:
-                //         Internal opcode for matching exceptions in except clause.
-                //         Not user-visible, no AST node or Python code emission needed.
+                /* Python 3.11+: TOS is the exception type to match against the
+                   active exception (pushed by PUSH_EXC_INFO).  Build a
+                   CMP_EXCEPTION compare so the following POP_JUMP_IF_FALSE opens
+                   a typed `except <type>:` block via the shared machinery. */
+                if (zce_active_handler >= 0) {
+                    PycRef<ASTNode> right = stack.top();
+                    stack.pop();
+                    PycRef<ASTNode> left = stack.top();
+                    stack.pop();
+                    stack.push(new ASTCompare(left, right, ASTCompare::CMP_EXCEPTION));
+                    zce_expect_check = false;  // Consumed
+                }
                 break;
         case Pyc::CLEANUP_THROW:
                 //         Internal opcode for cleaning up after a generator throw (Python 3.11+).
@@ -1222,6 +1498,51 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::FORMAT_SIMPLE:
                 //         Internal opcode for simple string formatting using f-strings or .format(), no formatting spec.
                 //         Not user-visible, formatting is handled at a higher AST level.
+                break;
+
+        case Pyc::LOAD_COMMON_CONSTANT_A:
+            {
+                /* Python 3.14+: push a well-known builtin by index. */
+                static const char* common_constants[] = {
+                    "AssertionError", "NotImplementedError", "tuple", "all", "any"
+                };
+                static const size_t common_constants_len =
+                    sizeof(common_constants) / sizeof(common_constants[0]);
+                PycRef<PycString> name = new PycString;
+                name->setValue((static_cast<size_t>(operand) < common_constants_len)
+                               ? common_constants[operand] : "<COMMON_CONSTANT>");
+                stack.push(new ASTName(name));
+            }
+            break;
+
+        case Pyc::LOAD_SPECIAL_A:
+            {
+                /* Python 3.14+: replace TOS object with a bound special method
+                   (used by the with/async-with protocol). We model it as an
+                   attribute access; the surrounding with-block handling ignores
+                   the exact form. */
+                static const char* special_methods[] = {
+                    "__enter__", "__exit__", "__aenter__", "__aexit__"
+                };
+                static const size_t special_methods_len =
+                    sizeof(special_methods) / sizeof(special_methods[0]);
+                PycRef<PycString> meth = new PycString;
+                meth->setValue((static_cast<size_t>(operand) < special_methods_len)
+                               ? special_methods[operand] : "<SPECIAL>");
+                PycRef<ASTNode> obj = stack.top();
+                stack.pop();
+                stack.push(new ASTBinary(obj, new ASTName(meth), ASTBinary::BIN_ATTR));
+            }
+            break;
+
+        case Pyc::STORE_FAST_MAYBE_NULL_A:
+                //         Python 3.14+: internal store used by the with/except* machinery.
+                //         Not user-visible, no AST node or Python code emission needed.
+                break;
+
+        case Pyc::ANNOTATIONS_PLACEHOLDER:
+        case Pyc::RESERVED:
+                //         Python 3.14+ placeholder/reserved slots with no runtime effect.
                 break;
 
         case Pyc::FORMAT_WITH_SPEC:
@@ -1287,11 +1608,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
 
         case Pyc::LOAD_FAST_AND_CLEAR_A:
                 //         Loads a local variable and clears it (Python 3.11+).
-                //         Not user-visible, no AST node or Python code emission needed.
-                break;
-
-        case Pyc::LOAD_FAST_CHECK_A:
-                //         Loads a local variable with additional checks (Python 3.11+).
                 //         Not user-visible, no AST node or Python code emission needed.
                 break;
 
@@ -1365,7 +1681,6 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::PREP_RERAISE_STAR:
         case Pyc::ASYNC_GEN_WRAP:
         case Pyc::BEGIN_FINALLY:
-        case Pyc::PUSH_EXC_INFO:
         case Pyc::ROT_N_A:
         case Pyc::RESERVE_FAST_A:
         case Pyc::RETURN_GENERATOR:
@@ -1509,6 +1824,14 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
         case Pyc::INSTRUMENTED_JUMP_BACKWARD_A:
         case Pyc::JUMP_BACKWARD_NO_INTERRUPT_A:
         {
+            /* Python 3.11+: inside a zero-cost except clause the trailing
+               JUMP_BACKWARD_NO_INTERRUPT merely resumes the shared continuation
+               after the try/except; it is not a loop 'continue'. */
+            if (opcode == Pyc::JUMP_BACKWARD_NO_INTERRUPT_A
+                    && zce_active_handler >= 0) {
+                break;
+            }
+
             int delta = operand;
             if (mod->verCompare(3, 10) >= 0) {
                 delta *= sizeof(uint16_t);
@@ -1912,17 +2235,24 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 }
             }
             break;
+        case Pyc::LOAD_SMALL_INT_A:
+            /* Python 3.14+: push a small integer literal in range(256) */
+            stack.push(new ASTObject(new PycInt(operand)));
+            break;
         case Pyc::LOAD_DEREF_A:
         case Pyc::LOAD_CLASSDEREF_A:
             stack.push(new ASTName(code->getCellVar(mod, operand)));
             break;
         case Pyc::LOAD_FAST_A:
+        case Pyc::LOAD_FAST_CHECK_A:
+        case Pyc::LOAD_FAST_BORROW_A:
             if (mod->verCompare(1, 3) < 0)
                 stack.push(new ASTName(code->getName(operand)));
             else
                 stack.push(new ASTName(code->getLocal(operand)));
             break;
         case Pyc::LOAD_FAST_LOAD_FAST_A:
+        case Pyc::LOAD_FAST_BORROW_LOAD_FAST_BORROW_A:
             stack.push(new ASTName(code->getLocal(operand >> 4)));
             stack.push(new ASTName(code->getLocal(operand & 0xF)));
             break;
@@ -2225,7 +2555,35 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             }
             break;
         case Pyc::POP_EXCEPT:
-            /* Do nothing. */
+            /* Python 3.11+: closes the current except clause.  Pop the BLK_EXCEPT
+               back into its container so the next clause (or the end of the
+               handler) is processed against the container again. */
+            if (zce_active_handler >= 0
+                    && curblock->blktype() == ASTBlock::BLK_EXCEPT) {
+                PycRef<ASTBlock> except = curblock;
+                blocks.pop();
+                curblock = blocks.top();
+                curblock->append(except.cast<ASTNode>());
+                if (!stack_hist.empty()) {
+                    stack = stack_hist.top();
+                    stack_hist.pop();
+                }
+            }
+            break;
+        case Pyc::POP_ITER:
+            /* Python 3.14+: pops the exhausted iterator after a for loop.
+               In our stack model FOR_ITER already consumed the iterator, so
+               there is nothing to do here (END_FOR closed the block). */
+            break;
+        case Pyc::NOT_TAKEN:
+            /* Python 3.14+: pure branch-prediction hint, no stack or code effect.
+               Inside a zero-cost handler, NOT_TAKEN immediately precedes either a
+               POP_TOP (bare except) or a STORE_FAST that binds the `as <name>`
+               alias.  Flag the latter so the following store is treated as the
+               alias rather than a normal assignment. */
+            if (zce_active_handler >= 0
+                    && curblock->blktype() == ASTBlock::BLK_EXCEPT)
+                zce_expect_as = true;
             break;
         case Pyc::END_FOR:
             {
@@ -2255,6 +2613,26 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
         case Pyc::POP_TOP:
             {
+                /* Python 3.11+: a POP_TOP right after PUSH_EXC_INFO (bare except:)
+                   or after NOT_TAKEN (except <type>: with no `as` alias). */
+                if (zce_expect_check) {
+                    /* Bare except: — no CHECK_EXC_MATCH, immediate POP_TOP.
+                       Create an unconditional except block (NULL cond renders as
+                       a bare `except:`). */
+                    zce_expect_check = false;
+                    stack.pop();  // Discard the exception placeholder
+                    PycRef<ASTBlock> except_block =
+                            new ASTCondBlock(ASTBlock::BLK_EXCEPT, curpos, NULL, false);
+                    except_block->init();
+                    blocks.push(except_block);
+                    curblock = blocks.top();
+                    break;
+                }
+                if (zce_expect_as) {
+                    zce_expect_as = false;
+                    stack.pop();
+                    break;
+                }
                 PycRef<ASTNode> value = stack.top();
                 stack.pop();
                 if (!curblock->inited()) {
@@ -2636,6 +3014,30 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             break;
         case Pyc::STORE_FAST_A:
             {
+                /* Python 3.11+ zero-cost exceptions: capture the `except ... as
+                   <name>` alias, and suppress the compiler-generated
+                   `<name> = None; del <name>` cleanup emitted at clause end. */
+                if (zce_active_handler >= 0) {
+                    PycRef<PycString> local = (mod->verCompare(1, 3) < 0)
+                            ? code->getName(operand) : code->getLocal(operand);
+                    if (zce_expect_as
+                            && curblock->blktype() == ASTBlock::BLK_EXCEPT) {
+                        zce_expect_as = false;
+                        zce_as_name = local;
+                        curblock.cast<ASTCondBlock>()->setExceptAs(new ASTName(local));
+                        stack.pop(); // consume the exception value being bound
+                        break;
+                    }
+                    if (zce_as_name != NULL && local->isEqual(zce_as_name->strValue())) {
+                        PycRef<ASTNode> value = stack.top();
+                        // `<name> = None` cleanup -> drop it silently.
+                        if (value == NULL || (value.type() == ASTNode::NODE_OBJECT
+                                && value.cast<ASTObject>()->object().type() == PycObject::TYPE_NONE)) {
+                            stack.pop();
+                            break;
+                        }
+                    }
+                }
                 if (unpack) {
                     PycRef<ASTNode> name;
 
@@ -3025,7 +3427,16 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                as no-ops. */
             break;
         case Pyc::PUSH_NULL:
-            stack.push(nullptr);
+            /* Python 3.14 emits standalone PUSH_NULL after some callable
+               loads. Normalize that layout to NULL, callable for CALL. */
+            if (mod->verCompare(3, 14) >= 0 && !stack.empty()) {
+                PycRef<ASTNode> callable = stack.top();
+                stack.pop();
+                stack.push(nullptr);
+                stack.push(callable);
+            } else {
+                stack.push(nullptr);
+            }
             break;
         case Pyc::GEN_START_A:
             stack.pop();
@@ -3120,6 +3531,181 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 PycRef<ASTNode> value = stack.top(operand);
                 stack.push(value);
             }
+            break;
+        case Pyc::BUILD_INTERPOLATION_A:
+            {
+                /* Python 3.14+ (PEP 750): build a single {expr!conv:spec}
+                   interpolation for a t-string. The operand encodes
+                     conversion  = operand >> 2   (0=none,1=str,2=repr,3=ascii)
+                     has_spec    = operand & 0x01
+                   Stack (top first):
+                     [format_spec?]  (present when has_spec)
+                     source_text     (str constant, discarded — we re-render)
+                     value           (the interpolated expression)
+                   We reuse ASTFormattedValue so the same rendering path as
+                   f-strings emits the {value...} piece. */
+                PycRef<ASTNode> format_spec;
+                if (operand & 0x01) {
+                    format_spec = stack.top();
+                    stack.pop();
+                }
+                /* discard the literal source-text expression string */
+                stack.pop();
+                PycRef<ASTNode> value = stack.top();
+                stack.pop();
+
+                int flags = (operand >> 2) & 0x03;
+                if (format_spec != NULL)
+                    flags |= ASTFormattedValue::HAVE_FMT_SPEC;
+                stack.push(new ASTFormattedValue(value,
+                        static_cast<ASTFormattedValue::ConversionFlag>(flags),
+                        format_spec));
+            }
+            break;
+        case Pyc::BUILD_TEMPLATE:
+            {
+                /* Python 3.14+ (PEP 750): combine the strings tuple and the
+                   interpolations tuple into a template literal t"...". Stack:
+                     interpolations (tuple of ASTFormattedValue)
+                     strings        (tuple of str constants) */
+                PycRef<ASTNode> interpolations = stack.top();
+                stack.pop();
+                PycRef<ASTNode> strings = stack.top();
+                stack.pop();
+
+                ASTJoinedStr::value_t pieces;
+                ASTTuple::value_t str_vals, interp_vals;
+                if (strings.type() == ASTNode::NODE_TUPLE) {
+                    str_vals = strings.cast<ASTTuple>()->values();
+                } else if (strings.type() == ASTNode::NODE_OBJECT) {
+                    /* The literal string parts are usually a single tuple
+                       constant (LOAD_CONST). Unpack it into ASTObjects. */
+                    PycRef<PycObject> obj = strings.cast<ASTObject>()->object();
+                    if (obj.type() == PycObject::TYPE_TUPLE
+                            || obj.type() == PycObject::TYPE_SMALL_TUPLE) {
+                        for (const auto& v : obj.cast<PycTuple>()->values())
+                            str_vals.push_back(new ASTObject(v));
+                    }
+                }
+                if (interpolations.type() == ASTNode::NODE_TUPLE)
+                    interp_vals = interpolations.cast<ASTTuple>()->values();
+                else if (interpolations.type() != ASTNode::NODE_OBJECT)
+                    interp_vals.push_back(interpolations);
+
+                /* Interleave literal strings with interpolations, matching the
+                   f-string style: str[0], interp[0], str[1], interp[1], ... */
+                size_t si = 0;
+                for (const auto& interp : interp_vals) {
+                    if (si < str_vals.size())
+                        pieces.push_back(str_vals[si++]);
+                    pieces.push_back(interp);
+                }
+                while (si < str_vals.size())
+                    pieces.push_back(str_vals[si++]);
+
+                stack.push(new ASTJoinedStr(pieces, /*is_template=*/true));
+            }
+            break;
+        /* Python 3.12+ "specialized"/adaptive opcodes.  CPython only produces
+           these at run time after quickening; marshal always writes the
+           un-specialized base form to a .pyc, so they never occur in files we
+           decompile.  Handle them defensively (as their un-adaptive base op's
+           no-op equivalent) so a hand-crafted or instrumented object doesn't
+           abort the whole decompilation.  These carry inline-cache args we
+           cannot recover, so we simply skip them. */
+        case Pyc::BINARY_OP_ADD_FLOAT:
+        case Pyc::BINARY_OP_ADD_INT:
+        case Pyc::BINARY_OP_ADD_UNICODE:
+        case Pyc::BINARY_OP_INPLACE_ADD_UNICODE:
+        case Pyc::BINARY_OP_MULTIPLY_FLOAT:
+        case Pyc::BINARY_OP_MULTIPLY_INT:
+        case Pyc::BINARY_OP_SUBTRACT_FLOAT:
+        case Pyc::BINARY_OP_SUBTRACT_INT:
+        case Pyc::BINARY_OP_SUBSCR_DICT:
+        case Pyc::BINARY_OP_SUBSCR_GETITEM:
+        case Pyc::BINARY_OP_SUBSCR_LIST_INT:
+        case Pyc::BINARY_OP_SUBSCR_LIST_SLICE:
+        case Pyc::BINARY_OP_SUBSCR_STR_INT:
+        case Pyc::BINARY_OP_SUBSCR_TUPLE_INT:
+        case Pyc::BINARY_OP_EXTEND:
+        case Pyc::CALL_ALLOC_AND_ENTER_INIT:
+        case Pyc::CALL_BOUND_METHOD_EXACT_ARGS:
+        case Pyc::CALL_BOUND_METHOD_GENERAL:
+        case Pyc::CALL_BUILTIN_CLASS:
+        case Pyc::CALL_BUILTIN_FAST:
+        case Pyc::CALL_BUILTIN_FAST_WITH_KEYWORDS:
+        case Pyc::CALL_BUILTIN_O:
+        case Pyc::CALL_ISINSTANCE:
+        case Pyc::CALL_KW_BOUND_METHOD:
+        case Pyc::CALL_KW_NON_PY:
+        case Pyc::CALL_KW_PY:
+        case Pyc::CALL_LEN:
+        case Pyc::CALL_LIST_APPEND:
+        case Pyc::CALL_METHOD_DESCRIPTOR_FAST:
+        case Pyc::CALL_METHOD_DESCRIPTOR_FAST_WITH_KEYWORDS:
+        case Pyc::CALL_METHOD_DESCRIPTOR_NOARGS:
+        case Pyc::CALL_METHOD_DESCRIPTOR_O:
+        case Pyc::CALL_NON_PY_GENERAL:
+        case Pyc::CALL_PY_EXACT_ARGS:
+        case Pyc::CALL_PY_GENERAL:
+        case Pyc::CALL_STR_1:
+        case Pyc::CALL_TUPLE_1:
+        case Pyc::CALL_TYPE_1:
+        case Pyc::COMPARE_OP_FLOAT:
+        case Pyc::COMPARE_OP_INT:
+        case Pyc::COMPARE_OP_STR:
+        case Pyc::CONTAINS_OP_DICT:
+        case Pyc::CONTAINS_OP_SET:
+        case Pyc::FOR_ITER_GEN:
+        case Pyc::FOR_ITER_LIST:
+        case Pyc::FOR_ITER_RANGE:
+        case Pyc::FOR_ITER_TUPLE:
+        case Pyc::LOAD_ATTR_CLASS:
+        case Pyc::LOAD_ATTR_CLASS_WITH_METACLASS_CHECK:
+        case Pyc::LOAD_ATTR_GETATTRIBUTE_OVERRIDDEN:
+        case Pyc::LOAD_ATTR_INSTANCE_VALUE:
+        case Pyc::LOAD_ATTR_METHOD_LAZY_DICT:
+        case Pyc::LOAD_ATTR_METHOD_NO_DICT:
+        case Pyc::LOAD_ATTR_METHOD_WITH_VALUES:
+        case Pyc::LOAD_ATTR_MODULE:
+        case Pyc::LOAD_ATTR_NONDESCRIPTOR_NO_DICT:
+        case Pyc::LOAD_ATTR_NONDESCRIPTOR_WITH_VALUES:
+        case Pyc::LOAD_ATTR_PROPERTY:
+        case Pyc::LOAD_ATTR_SLOT:
+        case Pyc::LOAD_ATTR_WITH_HINT:
+        case Pyc::LOAD_CONST_IMMORTAL:
+        case Pyc::LOAD_CONST_MORTAL:
+        case Pyc::LOAD_GLOBAL_BUILTIN:
+        case Pyc::LOAD_GLOBAL_MODULE:
+        case Pyc::LOAD_SUPER_ATTR_ATTR:
+        case Pyc::LOAD_SUPER_ATTR_METHOD:
+        case Pyc::RESUME_CHECK:
+        case Pyc::SEND_GEN:
+        case Pyc::STORE_ATTR_INSTANCE_VALUE:
+        case Pyc::STORE_ATTR_SLOT:
+        case Pyc::STORE_ATTR_WITH_HINT:
+        case Pyc::STORE_SUBSCR_DICT:
+        case Pyc::STORE_SUBSCR_LIST_INT:
+        case Pyc::TO_BOOL_ALWAYS_TRUE:
+        case Pyc::TO_BOOL_BOOL:
+        case Pyc::TO_BOOL_INT:
+        case Pyc::TO_BOOL_LIST:
+        case Pyc::TO_BOOL_NONE:
+        case Pyc::TO_BOOL_STR:
+        case Pyc::UNPACK_SEQUENCE_LIST:
+        case Pyc::UNPACK_SEQUENCE_TUPLE:
+        case Pyc::UNPACK_SEQUENCE_TWO_TUPLE:
+        case Pyc::JUMP_BACKWARD_JIT:
+        case Pyc::JUMP_BACKWARD_NO_JIT:
+        case Pyc::JUMP:
+        case Pyc::JUMP_NO_INTERRUPT:
+        case Pyc::SETUP_CLEANUP:
+        case Pyc::INSTRUMENTED_END_ASYNC_FOR_A:
+        case Pyc::INSTRUMENTED_NOT_TAKEN_A:
+        case Pyc::INSTRUMENTED_POP_ITER_A:
+            fprintf(stderr, "Note: skipping specialized opcode %s (%d); "
+                            "unexpected in marshaled bytecode\n",
+                            Pyc::OpcodeName(opcode), opcode);
             break;
         default:
             fprintf(stderr, "Unsupported opcode: %s (%d)\n", Pyc::OpcodeName(opcode), opcode);
@@ -3413,7 +3999,7 @@ void print_src(PycRef<ASTNode> node, PycModule* mod, std::ostream& pyc_output)
         pyc_output << F_STRING_QUOTE;
         break;
     case ASTNode::NODE_JOINEDSTR:
-        pyc_output << "f" F_STRING_QUOTE;
+        pyc_output << (node.cast<ASTJoinedStr>()->isTemplate() ? "t" : "f") << F_STRING_QUOTE;
         for (const auto& val : node.cast<ASTJoinedStr>()->values()) {
             switch (val.type()) {
             case ASTNode::NODE_FORMATTEDVALUE:
@@ -3425,7 +4011,13 @@ void print_src(PycRef<ASTNode> node, PycModule* mod, std::ostream& pyc_output)
                 print_const(pyc_output, val.cast<ASTObject>()->object(), mod, F_STRING_QUOTE);
                 break;
             default:
-                fprintf(stderr, "Unsupported node type %d in NODE_JOINEDSTR\n", val.type());
+                /* Any other expression node is an interpolation that wasn't
+                   wrapped in an ASTFormattedValue (e.g. a bare `{name}`).
+                   Render it as `{expr}`. */
+                pyc_output << "{";
+                print_src(val, mod, pyc_output);
+                pyc_output << "}";
+                break;
             }
         }
         pyc_output << F_STRING_QUOTE;
@@ -3575,6 +4167,11 @@ void print_src(PycRef<ASTNode> node, PycModule* mod, std::ostream& pyc_output)
                     blk.cast<ASTCondBlock>()->cond() != NULL) {
                 pyc_output << " ";
                 print_src(blk.cast<ASTCondBlock>()->cond(), mod, pyc_output);
+                PycRef<ASTNode> asname = blk.cast<ASTCondBlock>()->exceptAs();
+                if (asname != NULL) {
+                    pyc_output << " as ";
+                    print_src(asname, mod, pyc_output);
+                }
             } else if (blk->blktype() == ASTBlock::BLK_WITH) {
                 pyc_output << " ";
                 print_src(blk.cast<ASTWithBlock>()->expr(), mod, pyc_output);

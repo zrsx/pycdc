@@ -1,0 +1,35 @@
+def bare ( ) : <EOL>
+<INDENT>
+try : <EOL>
+<INDENT>
+a = 1 <EOL>
+<OUTDENT>
+except : <EOL>
+<INDENT>
+a = 2 <EOL>
+<OUTDENT>
+b = 3 <EOL>
+<OUTDENT>
+def typed ( ) : <EOL>
+<INDENT>
+try : <EOL>
+<INDENT>
+a = 1 <EOL>
+<OUTDENT>
+except ValueError : <EOL>
+<INDENT>
+a = 2 <EOL>
+<OUTDENT>
+b = 3 <EOL>
+<OUTDENT>
+def alias ( ) : <EOL>
+<INDENT>
+try : <EOL>
+<INDENT>
+a = 1 <EOL>
+<OUTDENT>
+except ValueError as e : <EOL>
+<INDENT>
+a = e <EOL>
+<OUTDENT>
+b = 3 <EOL>

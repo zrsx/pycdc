@@ -128,11 +128,6 @@ OPCODE(BUILD_TEMPLATE)                  // Python 3.14 ->
 OPCODE(BINARY_OP_INPLACE_ADD_UNICODE)
 OPCODE(NOT_TAKEN)
 OPCODE(POP_ITER)
-OPCODE(BUILD_INTERPOLATION)
-OPCODE(LOAD_COMMON_CONSTANT)
-OPCODE(LOAD_FAST_BORROW)
-OPCODE(LOAD_FAST_BORROW_LOAD_FAST_BORROW)
-OPCODE(LOAD_SPECIAL)
 OPCODE(BINARY_OP_ADD_FLOAT)
 OPCODE(BINARY_OP_ADD_INT)
 OPCODE(BINARY_OP_ADD_UNICODE)
@@ -220,7 +215,6 @@ OPCODE(ANNOTATIONS_PLACEHOLDER)
 OPCODE(JUMP)
 OPCODE(JUMP_NO_INTERRUPT)
 OPCODE(SETUP_CLEANUP)
-OPCODE(STORE_FAST_MAYBE_NULL)
 
 /* Has parameter word */
 OPCODE_A_FIRST(STORE_NAME)              // Python 1.0 ->                names[A]
@@ -371,6 +365,12 @@ OPCODE_A(SET_FUNCTION_ATTRIBUTE)        // Python 3.13 ->               A=attrib
 OPCODE_A(STORE_FAST_LOAD_FAST)          // Python 3.13 ->               A=locals[A<<4]+locals[A&0xf]
 OPCODE_A(STORE_FAST_STORE_FAST)         // Python 3.13 ->               A=locals[A<<4]+locals[A&0xf]
 OPCODE_A(LOAD_SMALL_INT)                // Python 3.14 ->               A=small int range(256)
+OPCODE_A(LOAD_FAST_BORROW)              // Python 3.14 ->               locals[A]
+OPCODE_A(LOAD_FAST_BORROW_LOAD_FAST_BORROW) // Python 3.14 ->           A=locals[A<<4]+locals[A&0xf]
+OPCODE_A(LOAD_COMMON_CONSTANT)          // Python 3.14 ->               A=common_constant_index
+OPCODE_A(LOAD_SPECIAL)                  // Python 3.14 ->               A=special_method_index
+OPCODE_A(BUILD_INTERPOLATION)           // Python 3.14 ->               A=(format&0x03)+(conversion<<2)
+OPCODE_A(STORE_FAST_MAYBE_NULL)         // Python 3.14 ->               locals[A]
 
 /* Instrumented opcodes */
 OPCODE_A(INSTRUMENTED_LOAD_SUPER_ATTR)      // Python 3.12 ->           (see LOAD_SUPER_ATTR)
