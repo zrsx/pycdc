@@ -1,0 +1,3 @@
+buildbot[bundle]==4.2.1
+docker==7.1.0
+psycopg2-binary==2.9.10
