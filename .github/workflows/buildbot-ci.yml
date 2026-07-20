@@ -1,0 +1,131 @@
+name: Buildbot-CI
+
+on:
+  push:
+    branches: [__main__]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: CMake build type
+        type: choice
+        default: Release
+        options: [Debug, Release, RelWithDebInfo, MinSizeRel]
+
+permissions:
+  contents: read
+
+jobs:
+  buildbot:
+    runs-on: ubuntu-latest
+
+    env:
+      # The FreeBSD image cannot run on a Linux Docker daemon, so this runner
+      # brings up only the four Linux workers of the 5-image matrix.
+      ACTIVE_WORKERS: debian,fedora,rocky,ubi
+      # A real Buildbot master runs as a host process here; latent worker
+      # containers reach it back over the docker bridge gateway.
+      MASTER_DIR: ${{ github.workspace }}/.buildbot-master
+      PB_PORT: "9989"
+      WEB_PORT: "8010"
+      CHANGE_USER: pycdc-change
+      CHANGE_PASSWORD: pycdc-change
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Buildbot
+        run: pip install -r buildbot/requirements.txt
+
+      - name: Build Linux worker images
+        run: buildbot/docker/build-images.sh -j2 debian fedora rocky ubi
+
+      - name: Configure master environment
+        run: |
+          gateway="$(docker network inspect bridge \
+            --format '{{ (index .IPAM.Config 0).Gateway }}')"
+          {
+            echo "PYCDC_GIT_URL=${{ github.server_url }}/${{ github.repository }}.git"
+            echo "PYCDC_GITHUB_OWNER=${{ github.repository_owner }}"
+            echo "PYCDC_GITHUB_REPOSITORY=${{ github.event.repository.name }}"
+            echo "PYCDC_GITHUB_TOKEN=placeholder-token"
+            echo "PYCDC_GITHUB_WEBHOOK_SECRET=placeholder-webhook-secret"
+            echo "BUILDBOT_GITHUB_OAUTH_CLIENT_ID=placeholder-oauth-id"
+            echo "BUILDBOT_GITHUB_OAUTH_CLIENT_SECRET=placeholder-oauth-secret"
+            echo "BUILDBOT_ADMIN_USERS=ci-admin"
+            echo "BUILDBOT_WORKER_PASSWORD=pycdc-worker"
+            echo "BUILDBOT_DB_PASSWORD=placeholder-db"
+            echo "BUILDBOT_DB_URL=sqlite:///state.sqlite"
+            echo "BUILDBOT_FQDN=http://localhost:${WEB_PORT}"
+            echo "BUILDBOT_MASTER_TO_WORKER=tcp:${PB_PORT}"
+            echo "BUILDBOT_ACTIVE_WORKERS=${ACTIVE_WORKERS}"
+            echo "BUILDBOT_WORKER_NETWORK=bridge"
+            echo "BUILDBOT_WORKER_MASTER_FQDN=${gateway}"
+            echo "BUILDBOT_CHANGE_USER=${CHANGE_USER}"
+            echo "BUILDBOT_CHANGE_PASSWORD=${CHANGE_PASSWORD}"
+            echo "DOCKER_HOST=unix:///var/run/docker.sock"
+          } >> "${GITHUB_ENV}"
+
+      - name: Check master configuration
+        run: buildbot checkconfig buildbot/master.cfg
+
+      - name: Start master
+        run: |
+          buildbot create-master "${MASTER_DIR}"
+          ln -sfn "${GITHUB_WORKSPACE}/buildbot/master.cfg" "${MASTER_DIR}/master.cfg"
+          buildbot start "${MASTER_DIR}"
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://localhost:${WEB_PORT}/api/v2/builders" >/dev/null; then
+              echo "Master web UI is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Master did not become ready" >&2
+          exit 1
+
+      - name: Trigger a build over localhost
+        run: |
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          buildbot sendchange \
+            --master "localhost:${PB_PORT}" \
+            --auth "${CHANGE_USER}:${CHANGE_PASSWORD}" \
+            --who "github-actions" \
+            --repository "${PYCDC_GIT_URL}" \
+            --project pycdc \
+            --branch "${branch}" \
+            --revision "${GITHUB_SHA}" \
+            --comments "Buildbot-CI localhost trigger for ${GITHUB_SHA}"
+
+      - name: Wait for builds to finish
+        run: python3 buildbot/ci/wait_for_builds.py
+        env:
+          BUILDBOT_WEB_URL: http://localhost:8010
+          EXPECTED_WORKERS: ${{ env.ACTIVE_WORKERS }}
+          WAIT_TIMEOUT: "2400"
+
+      - name: Collect master logs
+        if: always()
+        run: |
+          mkdir -p .buildbot-logs
+          cp -f "${MASTER_DIR}/twistd.log" .buildbot-logs/ 2>/dev/null || true
+          docker ps -a --format '{{ .Names }}' | while read -r name; do
+            docker logs "${name}" > ".buildbot-logs/${name}.log" 2>&1 || true
+          done
+
+      - name: Stop master
+        if: always()
+        run: buildbot stop "${MASTER_DIR}" || true
+
+      - name: Upload master logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: buildbot-master-logs
+          path: .buildbot-logs
+          if-no-files-found: ignore
