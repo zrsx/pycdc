@@ -16,14 +16,15 @@ large regression databases.
 
 The `freebsd/freebsd-toolchain:15.1` image is a FreeBSD-kernel image: it only
 builds and runs on a FreeBSD Docker host. Set `BUILDBOT_ACTIVE_WORKERS` to the
-comma-separated subset of workers a given host can serve (the GitHub workflow
-uses `debian,fedora,rocky,ubi`); the full 5-image matrix stays defined.
+comma-separated subset of workers a given host can serve (a Linux Docker host
+serves `debian,fedora,rocky,ubi`); the full 5-image matrix stays defined.
 
-Alongside the GitHub webhook, the master exposes a `PBChangeSource`, so a build
-can be triggered over localhost with `buildbot sendchange`. The `Buildbot-CI`
-GitHub workflow uses this: it stands up a real master plus the four Linux
-latent workers on the runner, injects the current revision over
-`localhost:9989`, and fails unless every active builder finishes successfully.
+Alongside the GitHub webhook, the master exposes a `PBChangeSource`, so an
+operator can trigger a build against the deployed master with
+`buildbot sendchange --master <host>:9989`, without depending on the webhook.
+`buildbot/ci/wait_for_builds.py` polls the REST API and exits non-zero unless
+every active builder finishes successfully, turning such a run into a pass/fail
+gate.
 
 The Debian builder also runs clang-format in verification mode, cppcheck,
 clang-tidy, and scan-build. Formatting never rewrites the checkout. Each

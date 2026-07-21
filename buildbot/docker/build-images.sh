@@ -7,7 +7,8 @@ declare -a requested=()
 
 # Usage: build-images.sh [-jN] [name ...]
 # With no names, every image is built. Pass names (e.g. debian fedora rocky ubi)
-# to build a subset -- the Linux-only GitHub workflow uses this to skip freebsd.
+# to build a subset -- a Linux Docker host uses this to skip the freebsd image,
+# which only builds and runs on a FreeBSD Docker host.
 for arg in "$@"; do
     case "${arg}" in
         -j*) parallelism="${arg#-j}" ;;

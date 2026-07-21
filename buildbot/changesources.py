@@ -18,9 +18,9 @@ from config import (
 def create_change_sources():
     """Use webhooks primarily and pollers as loss/restart recovery.
 
-    A PBChangeSource is also exposed so an operator (or the GitHub Actions
-    workflow) can inject a change over the master PB port with
-    ``buildbot sendchange`` without depending on the GitHub webhook.
+    A PBChangeSource is also exposed so an operator can inject a change over
+    the master PB port with ``buildbot sendchange`` without depending on the
+    GitHub webhook.
     """
     return [
         changes.PBChangeSource(user=CHANGE_USER, passwd=CHANGE_PASSWORD),

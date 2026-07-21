@@ -1,7 +1,9 @@
 FROM rockylinux/rockylinux:9
 ARG BUILDBOT_WORKER_VERSION=4.2.1
 ENV BUILDBOT_WORKER_VERSION=${BUILDBOT_WORKER_VERSION}
-RUN dnf -y install epel-release && dnf -y groupinstall "Development Tools" && \
+RUN dnf -y install epel-release dnf-plugins-core && \
+    dnf config-manager --set-enabled crb && \
+    dnf -y groupinstall "Development Tools" && \
     dnf -y install bash ca-certificates ccache clang cmake git ninja-build python3 \
     python3-pip tar && dnf clean all
 COPY buildbot/docker/install-worker.sh /usr/local/bin/install-worker

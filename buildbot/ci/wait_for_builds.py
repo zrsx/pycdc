@@ -2,8 +2,8 @@
 """Wait for the Buildbot builds triggered over localhost to finish.
 
 Polls the master REST API until every expected builder has a completed build,
-then exits non-zero if any of those builds did not succeed. Used by the
-Buildbot-CI GitHub workflow to turn a real Buildbot run into a pass/fail gate.
+then exits non-zero if any of those builds did not succeed. Turns a real
+Buildbot run triggered over the PB port into a pass/fail gate.
 """
 
 import json
