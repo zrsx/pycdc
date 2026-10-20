@@ -18,7 +18,7 @@ public:
         NODE_COMPREHENSION, NODE_LOADBUILDCLASS, NODE_AWAITABLE,
         NODE_FORMATTEDVALUE, NODE_JOINEDSTR, NODE_CONST_MAP,
         NODE_ANNOTATED_VAR, NODE_CHAINSTORE, NODE_TERNARY,
-        NODE_KW_NAMES_MAP,
+        NODE_KW_NAMES_MAP, NODE_UNPACK, NODE_KEYVALUE,
 
         // Empty node types
         NODE_LOCALS,
@@ -332,6 +332,32 @@ private:
 };
 
 
+class ASTUnpack : public ASTNode {
+public:
+    ASTUnpack(PycRef<ASTNode> value)
+        : ASTNode(NODE_UNPACK), m_value(std::move(value)) { }
+
+    PycRef<ASTNode> value() const { return m_value; }
+
+private:
+    PycRef<ASTNode> m_value;
+};
+
+
+class ASTKeyValue : public ASTNode {
+public:
+    ASTKeyValue(PycRef<ASTNode> key, PycRef<ASTNode> value)
+        : ASTNode(NODE_KEYVALUE), m_key(std::move(key)), m_value(std::move(value)) { }
+
+    PycRef<ASTNode> key() const { return m_key; }
+    PycRef<ASTNode> value() const { return m_value; }
+
+private:
+    PycRef<ASTNode> m_key;
+    PycRef<ASTNode> m_value;
+};
+
+
 class ASTTuple : public ASTNode {
 public:
     typedef std::vector<PycRef<ASTNode>> value_t;
@@ -341,7 +367,17 @@ public:
           m_requireParens(true) { }
 
     const value_t& values() const { return m_values; }
-    void add(PycRef<ASTNode> name) { m_values.emplace_back(std::move(name)); }
+    void add(PycRef<ASTNode> name) {
+        if (static_cast<int>(m_values.size()) == m_staridx) {
+            m_values.emplace_back(new ASTUnpack(std::move(name)));
+            m_staridx = -2;  /* wrap only once */
+        } else {
+            m_values.emplace_back(std::move(name));
+        }
+    }
+
+    /* Mark the unpacked-target slot that should print with a `*` prefix */
+    void setStarIndex(int idx) { m_staridx = idx; }
 
     void setRequireParens(bool require) { m_requireParens = require; }
     bool requireParens() const { return m_requireParens; }
@@ -349,6 +385,7 @@ public:
 private:
     value_t m_values;
     bool m_requireParens;
+    int m_staridx = -1;
 };
 
 
@@ -373,6 +410,8 @@ public:
         : ASTNode(NODE_SET), m_values(std::move(values)) { }
 
     const value_t& values() const { return m_values; }
+
+    void add(PycRef<ASTNode> value) { m_values.push_back(std::move(value)); }
 
 private:
     value_t m_values;
@@ -604,6 +643,7 @@ public:
     void setIndex(PycRef<ASTNode> idx) { m_idx = std::move(idx); init(); }
     void setCondition(PycRef<ASTNode> cond) { m_cond = std::move(cond); }
     void setComprehension(bool comp) { m_comp = comp; }
+    void setIter(PycRef<ASTNode> iter) { m_iter = std::move(iter); }
 
 private:
     PycRef<ASTNode> m_iter;
@@ -656,6 +696,11 @@ public:
     PycRef<ASTNode> result() const { return m_result; }
     generator_t generators() const { return m_generators; }
 
+    /* '[', ']' for lists; '{', '}' for sets and dicts; '(', ')' for genexprs */
+    void setBraces(char open, char close) { m_open = open; m_close = close; }
+    char braceOpen() const { return m_open; }
+    char braceClose() const { return m_close; }
+
     void addGenerator(PycRef<ASTIterBlock> gen) {
         m_generators.emplace_front(std::move(gen));
     }
@@ -663,6 +708,8 @@ public:
 private:
     PycRef<ASTNode> m_result;
     generator_t m_generators;
+    char m_open = '[';
+    char m_close = ']';
 
 };
 
