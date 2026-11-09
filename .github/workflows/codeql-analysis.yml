@@ -39,7 +39,7 @@ jobs:
 
     - if: matrix.language == 'python'
       name: Autobuild Python
-      uses: github/codeql-action/autobuild@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+      uses: github/codeql-action/autobuild@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
 
     - if: matrix.language == 'cpp'
       name: Build C++
